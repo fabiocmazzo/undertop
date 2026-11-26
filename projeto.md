@@ -52,7 +52,9 @@ Minimum terminal size is 80x24; it looks best at 160x45 or larger, in a truecolo
 - **Overlays**: the boot sequence (a power-on self test that uses real figures, ~3 s, any key skips), the
   operator manual (`?`), and the termination authorization dialog with flashing hazard borders.
 - **CRT emulation** (`x` toggles it): scanlines (odd rows dimmer), a vignette, a bright band rolling down
-  the screen, a rare whole-screen flicker, and once in a while a row that glitches sideways for one frame.
+  the screen (one row every 3 frames), a rare brownout that dims a 3-row strip, and once in a while a
+  row that glitches sideways for one frame. Effects avoid repainting the whole screen at once: that
+  stalled slower terminals and the vhs recorder.
 
 ## Keys
 
