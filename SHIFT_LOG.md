@@ -2,6 +2,13 @@
 
 Changes to the terminal, newest shift first.
 
+## Unreleased
+
+- Mouse: click to select, double click for the dossier, wheel to scroll, click a column title to sort
+  by it, click the keycaps in the bottom line. The termination dialog still wants the keyboard.
+- End-of-shift report when leaving with `q`: time on duty, peaks, traffic, incidents and a verdict,
+  also left printed in the terminal (`shift_report = false` to skip it).
+
 ## v0.2.1 — Conservation Order
 
 - Less than half the CPU (5.1 % → 2.1 % of one core) and a third of the memory (18 → 7 MB): no more

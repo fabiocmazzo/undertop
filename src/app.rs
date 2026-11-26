@@ -7,10 +7,15 @@ use std::time::{Duration, Instant};
 
 use color_eyre::Result;
 use ratatui::DefaultTerminal;
-use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use ratatui::crossterm::event::{
+    self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent,
+    MouseEventKind,
+};
+use ratatui::layout::{Position, Rect};
 use ratatui::widgets::TableState;
 
 use crate::config::Settings;
+use crate::shift::ShiftStats;
 use crate::sysmon::{Dossier, Monitor, ProcRow};
 use crate::theme::{THEMES, Theme};
 use crate::ui;
@@ -29,6 +34,25 @@ const LOCKDOWN_COOLDOWN: Duration = Duration::from_secs(600);
 const ALERT_TIME: Duration = Duration::from_secs(6);
 /// Index of the LOCKDOWN palette in `THEMES`.
 const LOCKDOWN_THEME: usize = 3;
+/// The shift report signs itself out after this long.
+pub const REPORT_TIME: Duration = Duration::from_secs(12);
+/// Two clicks on the same row within this time open its dossier.
+const DOUBLE_CLICK: Duration = Duration::from_millis(400);
+
+/// Where things were drawn in the last frame, so a mouse click can find them.
+#[derive(Default, Debug)]
+pub struct Hits {
+    /// Rows of the manifest table (below its header).
+    pub rows: Rect,
+    /// Sortable header columns: (x from, x to, key), on line `header_y`.
+    pub header_y: u16,
+    pub columns: Vec<(u16, u16, SortKey)>,
+    /// Footer keycaps: (x from, x to, key they press), on line `footer_y`.
+    pub footer_y: u16,
+    pub keys: Vec<(u16, u16, KeyCode)>,
+    /// The dossier box, when open.
+    pub dossier: Option<Rect>,
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum SortKey {
@@ -100,6 +124,11 @@ pub struct App {
     /// PID whose dossier is open, and its data (refreshed with the telemetry).
     pub dossier: Option<(u32, Option<Dossier>)>,
     pub lockdown: Option<Lockdown>,
+    /// When the end-of-shift report appeared (after `q`).
+    pub report: Option<Instant>,
+    pub shift: ShiftStats,
+    pub hits: Hits,
+    last_click: Option<(Instant, usize)>,
     pub effects: bool,
     pub paused: bool,
     pub boot_start: Instant,
@@ -136,6 +165,10 @@ impl App {
             kill: None,
             dossier: None,
             lockdown: None,
+            report: None,
+            shift: ShiftStats::new(),
+            hits: Hits::default(),
+            last_click: None,
             effects: settings.crt,
             paused: false,
             boot_start: Instant::now(),
@@ -186,10 +219,10 @@ impl App {
                 if !event::poll(left)? {
                     break;
                 }
-                if let Event::Key(key) = event::read()?
-                    && key.kind == KeyEventKind::Press
-                {
-                    self.on_key(key);
+                match event::read()? {
+                    Event::Key(key) if key.kind == KeyEventKind::Press => self.on_key(key),
+                    Event::Mouse(m) => self.on_mouse(m),
+                    _ => {}
                 }
                 if self.quit {
                     return Ok(());
@@ -207,6 +240,9 @@ impl App {
             self.quit = true;
             return;
         }
+        if self.shutdown.is_none() && self.report.is_some_and(|t| t.elapsed() >= REPORT_TIME) {
+            self.power_down();
+        }
         if self.booting && self.boot_start.elapsed() >= BOOT_TIME {
             self.booting = false;
         }
@@ -215,7 +251,9 @@ impl App {
             self.mon.watch = self.dossier.as_ref().map(|(pid, _)| *pid);
             self.mon.refresh();
             self.rebuild();
+            self.shift.alerts += self.mon.alerts.len() as u32;
             self.alerts.extend(self.mon.alerts.drain(..));
+            self.shift.record(&self.mon);
             if let Some((pid, _)) = self.dossier {
                 self.dossier = Some((pid, self.mon.dossier(pid)));
             }
@@ -281,7 +319,10 @@ impl App {
     pub(crate) fn start_lockdown(&mut self, reason: String) {
         let prev_theme = match &self.lockdown {
             Some(l) => l.prev_theme,
-            None => self.theme_idx,
+            None => {
+                self.shift.lockdowns += 1;
+                self.theme_idx
+            }
         };
         self.theme_idx = LOCKDOWN_THEME;
         self.lockdown = Some(Lockdown {
@@ -370,11 +411,94 @@ impl App {
         }
     }
 
+    /// `q`: first the shift report (if enabled), then the power-down (if enabled), then out.
     fn leave(&mut self) {
+        if self.settings.shift_report && self.report.is_none() {
+            self.report = Some(Instant::now());
+        } else {
+            self.power_down();
+        }
+    }
+
+    fn power_down(&mut self) {
         if self.settings.power_down {
             self.shutdown = Some(Instant::now());
         } else {
             self.quit = true;
+        }
+    }
+
+    fn open_dossier(&mut self) {
+        if let Some(pid) = self.selected().map(|p| p.pid) {
+            self.dossier = Some((pid, self.mon.dossier(pid)));
+            self.shift.dossiers += 1;
+        }
+    }
+
+    fn on_mouse(&mut self, m: MouseEvent) {
+        let at = Position::new(m.column, m.row);
+        let click = matches!(m.kind, MouseEventKind::Down(MouseButton::Left));
+        let scroll = match m.kind {
+            MouseEventKind::ScrollDown => 3,
+            MouseEventKind::ScrollUp => -3,
+            _ => 0,
+        };
+        if !click && scroll == 0 {
+            return;
+        }
+        // Overlays: a click dismisses what a key would, except the termination dialog, which
+        // only the keyboard may answer.
+        if self.shutdown.is_some() || self.kill.is_some() {
+            return;
+        }
+        if self.booting || self.report.is_some() || self.lockdown.is_some() || self.show_help {
+            if click {
+                self.on_key(KeyEvent::from(KeyCode::Char(' ')));
+            }
+            return;
+        }
+        if self.dossier.is_some() {
+            if click && !self.hits.dossier.is_some_and(|r| r.contains(at)) {
+                self.dossier = None;
+            }
+            return;
+        }
+        if scroll != 0 {
+            self.move_by(scroll);
+            return;
+        }
+        let rows = self.hits.rows;
+        if rows.contains(at) {
+            let idx = self.table.offset() + (at.y - rows.y) as usize;
+            if idx < self.visible.len() {
+                let double = self
+                    .last_click
+                    .is_some_and(|(t, i)| i == idx && t.elapsed() <= DOUBLE_CLICK);
+                self.select(idx);
+                if double {
+                    self.last_click = None;
+                    self.open_dossier();
+                } else {
+                    self.last_click = Some((Instant::now(), idx));
+                }
+            }
+        } else if at.y == self.hits.header_y {
+            if let Some(&(_, _, key)) = self
+                .hits
+                .columns
+                .iter()
+                .find(|(a, b, _)| (*a..*b).contains(&at.x))
+            {
+                self.set_sort(key);
+            }
+        } else if at.y == self.hits.footer_y
+            && let Some(&(_, _, code)) = self
+                .hits
+                .keys
+                .iter()
+                .find(|(a, b, _)| (*a..*b).contains(&at.x))
+        {
+            self.on_key(KeyEvent::from(code));
         }
     }
 
@@ -390,6 +514,10 @@ impl App {
         }
         if self.booting {
             self.booting = false;
+            return;
+        }
+        if self.report.is_some() {
+            self.power_down();
             return;
         }
         if self.lockdown.is_some() {
@@ -445,11 +573,7 @@ impl App {
             KeyCode::Char('!') => {
                 self.start_lockdown("MANUAL OVERRIDE ▸ OPERATOR INITIATED".into())
             }
-            KeyCode::Enter => {
-                if let Some(pid) = self.selected().map(|p| p.pid) {
-                    self.dossier = Some((pid, self.mon.dossier(pid)));
-                }
-            }
+            KeyCode::Enter => self.open_dossier(),
             KeyCode::Char('v') | KeyCode::F(5) => {
                 self.tree = !self.tree;
                 self.rebuild();
@@ -533,7 +657,10 @@ impl App {
     fn terminate(&mut self, pid: u32, name: &str, force: bool) {
         let sig = if force { "SIGKILL" } else { "SIGTERM" };
         match self.mon.signal(pid, force) {
-            Some(true) => self.flash(format!("{sig} DISPATCHED ▸ PID {pid} ({name})")),
+            Some(true) => {
+                self.shift.terminations += 1;
+                self.flash(format!("{sig} DISPATCHED ▸ PID {pid} ({name})"))
+            }
             Some(false) => self.flash(format!("ACCESS DENIED ▸ PID {pid} ({name})")),
             None => self.flash(format!("PID {pid} NO LONGER ON THE MANIFEST")),
         }
@@ -644,5 +771,104 @@ mod tests {
         let out = build_tree(&procs, &|p| p.name == "vim", |a, b| a.pid.cmp(&b.pid));
         let names: Vec<&str> = out.iter().map(|r| r.name.as_str()).collect();
         assert_eq!(names, ["init", "shell", "vim"]);
+    }
+
+    mod mouse {
+        use ratatui::{Terminal, backend::TestBackend};
+
+        use super::super::*;
+
+        fn drawn_app() -> (App, Terminal<TestBackend>) {
+            let mut app = App::new(Settings {
+                boot: false,
+                ..Settings::default()
+            })
+            .unwrap();
+            let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
+            term.draw(|f| crate::ui::draw(f, &mut app)).unwrap();
+            (app, term)
+        }
+
+        fn at(kind: MouseEventKind, column: u16, row: u16) -> MouseEvent {
+            MouseEvent {
+                kind,
+                column,
+                row,
+                modifiers: KeyModifiers::NONE,
+            }
+        }
+
+        fn click(app: &mut App, x: u16, y: u16) {
+            app.on_mouse(at(MouseEventKind::Down(MouseButton::Left), x, y));
+        }
+
+        #[test]
+        fn click_selects_and_double_click_opens_dossier() {
+            let (mut app, _term) = drawn_app();
+            let r = app.hits.rows;
+            assert!(r.height > 3 && app.visible.len() > 3);
+            click(&mut app, r.x + 10, r.y + 2);
+            assert_eq!(app.table.selected(), Some(2));
+            assert!(app.dossier.is_none());
+            click(&mut app, r.x + 10, r.y + 2);
+            assert_eq!(app.dossier.map(|(pid, _)| pid), Some(app.visible[2].pid));
+            assert_eq!(app.shift.dossiers, 1);
+        }
+
+        #[test]
+        fn click_outside_dossier_closes_it() {
+            let (mut app, mut term) = drawn_app();
+            app.on_key(KeyEvent::from(KeyCode::Enter));
+            term.draw(|f| crate::ui::draw(f, &mut app)).unwrap();
+            let d = app.hits.dossier.unwrap();
+            click(&mut app, d.x + 2, d.y + 2);
+            assert!(app.dossier.is_some());
+            click(&mut app, 0, 0);
+            assert!(app.dossier.is_none());
+        }
+
+        #[test]
+        fn header_click_sorts_and_wheel_scrolls() {
+            let (mut app, _term) = drawn_app();
+            let &(x, _, key) = app
+                .hits
+                .columns
+                .iter()
+                .find(|c| c.2 == SortKey::Pid)
+                .unwrap();
+            assert_eq!(key, SortKey::Pid);
+            let y = app.hits.header_y;
+            click(&mut app, x + 1, y);
+            assert_eq!(app.sort, SortKey::Pid);
+            // sorting follows the selected process; the wheel moves 3 rows from there
+            let before = app.table.selected().unwrap();
+            app.on_mouse(at(MouseEventKind::ScrollUp, 50, 30));
+            assert_eq!(app.table.selected(), Some(before.saturating_sub(3)));
+        }
+
+        #[test]
+        fn footer_quit_shows_the_report_then_powers_down() {
+            let (mut app, _term) = drawn_app();
+            let &(x, _, _) = app
+                .hits
+                .keys
+                .iter()
+                .find(|k| k.2 == KeyCode::Char('q'))
+                .unwrap();
+            let y = app.hits.footer_y;
+            click(&mut app, x, y);
+            assert!(app.report.is_some() && app.shutdown.is_none());
+            app.on_key(KeyEvent::from(KeyCode::Char('z')));
+            assert!(app.shutdown.is_some());
+        }
+
+        #[test]
+        fn the_mouse_never_answers_a_termination() {
+            let (mut app, _term) = drawn_app();
+            app.on_key(KeyEvent::from(KeyCode::Char('K')));
+            assert!(app.kill.is_some());
+            click(&mut app, 80, 22);
+            assert!(app.kill.is_some());
+        }
     }
 }

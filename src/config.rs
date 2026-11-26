@@ -31,6 +31,9 @@ boot = true
 # CRT power-down animation when leaving
 power_down = true
 
+# end-of-shift report when leaving with q (also printed to the terminal afterwards)
+shift_report = true
+
 # seal the facility (LOCKDOWN palette, alarm) when a sensor reaches 95 °C
 # or 95 % of its critical temperature; at most once every 10 minutes
 lockdown_on_heat = true
@@ -44,6 +47,7 @@ struct File {
     crt: Option<bool>,
     boot: Option<bool>,
     power_down: Option<bool>,
+    shift_report: Option<bool>,
     lockdown_on_heat: Option<bool>,
 }
 
@@ -54,6 +58,7 @@ pub struct Settings {
     pub crt: bool,
     pub boot: bool,
     pub power_down: bool,
+    pub shift_report: bool,
     pub lockdown_on_heat: bool,
 }
 
@@ -65,6 +70,7 @@ impl Default for Settings {
             crt: true,
             boot: true,
             power_down: true,
+            shift_report: true,
             lockdown_on_heat: true,
         }
     }
@@ -112,6 +118,7 @@ impl Settings {
         s.crt = f.crt.unwrap_or(s.crt);
         s.boot = f.boot.unwrap_or(s.boot);
         s.power_down = f.power_down.unwrap_or(s.power_down);
+        s.shift_report = f.shift_report.unwrap_or(s.shift_report);
         s.lockdown_on_heat = f.lockdown_on_heat.unwrap_or(s.lockdown_on_heat);
         Ok(s)
     }

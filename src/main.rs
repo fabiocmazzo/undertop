@@ -3,14 +3,18 @@
 mod app;
 mod config;
 mod gpu;
+mod shift;
 mod sysmon;
 mod theme;
 mod ui;
 
+use std::io::stdout;
 use std::path::PathBuf;
 
 use color_eyre::Result;
 use color_eyre::eyre::eyre;
+use ratatui::crossterm::event::{DisableMouseCapture, EnableMouseCapture};
+use ratatui::crossterm::execute;
 
 use config::Settings;
 
@@ -72,5 +76,23 @@ fn main() -> Result<()> {
     }
 
     let mut app = app::App::new(settings)?;
-    ratatui::run(|terminal| app.run(terminal))
+
+    // ratatui restores the terminal on a panic but does not know about mouse capture
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let _ = execute!(stdout(), DisableMouseCapture);
+        previous(info);
+    }));
+    ratatui::run(|terminal| -> Result<()> {
+        execute!(stdout(), EnableMouseCapture)?;
+        let result = app.run(terminal);
+        execute!(stdout(), DisableMouseCapture)?;
+        result
+    })?;
+
+    // left with q: the report stays in the scrollback
+    if app.report.is_some() {
+        print!("{}", app.shift.text(&app.mon));
+    }
+    Ok(())
 }

@@ -7,6 +7,7 @@ mod widgets;
 
 use chrono::{Local, Timelike};
 use ratatui::Frame;
+use ratatui::crossterm::event::KeyCode;
 use ratatui::layout::{Constraint, Flex, Layout, Margin, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::symbols::Marker;
@@ -37,6 +38,9 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         console(f, area, app);
     }
 
+    if app.report.is_some() && area.width >= MIN_W && area.height >= MIN_H {
+        overlays::report(f, area, app);
+    }
     if app.effects {
         effects::apply(f, app);
     }
@@ -65,6 +69,7 @@ fn too_small(f: &mut Frame, area: Rect, t: &Theme) {
 
 fn console(f: &mut Frame, area: Rect, app: &mut App) {
     let t = app.theme();
+    app.hits = crate::app::Hits::default();
     let tall = area.height >= 40;
     let [header, top, mid, procs, footer] = Layout::vertical([
         Constraint::Length(5),
@@ -114,7 +119,7 @@ fn console(f: &mut Frame, area: Rect, app: &mut App) {
         draw_help(f, area, &t);
     }
     if app.dossier.is_some() {
-        overlays::dossier(f, area, app);
+        app.hits.dossier = overlays::dossier(f, area, app);
     }
     if app.kill.is_some() {
         draw_kill(f, area, app);
@@ -931,6 +936,31 @@ fn draw_procs(f: &mut Frame, area: Rect, app: &mut App) {
     .row_highlight_style(Style::new().fg(t.bg).bg(t.fg).add_modifier(Modifier::BOLD))
     .highlight_symbol("▶ ");
     f.render_stateful_widget(table, inner, &mut app.table);
+
+    // where a click lands: the header line, then one line per row
+    app.hits.header_y = inner.y;
+    app.hits.rows = Rect {
+        y: inner.y + 1,
+        height: inner.height.saturating_sub(1),
+        ..inner
+    };
+    let mut x = inner.x + 2; // the "▶ " highlight column
+    for (w, key) in [
+        (7, Some(Pid)),
+        (10, None),
+        (5, Some(Cpu)),
+        (6, None),
+        (9, Some(Mem)),
+        (3, None),
+        (11, Some(Time)),
+        (u16::MAX, Some(Name)),
+    ] {
+        let end = x.saturating_add(w).min(inner.right());
+        if let Some(key) = key {
+            app.hits.columns.push((x, end, key));
+        }
+        x = end + 1;
+    }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -947,27 +977,30 @@ const TICKER: &[&str] = &[
     "IN CASE OF CONTAINMENT BREACH, DO NOT PRESS !",
 ];
 
-fn draw_footer(f: &mut Frame, area: Rect, app: &App) {
+fn draw_footer(f: &mut Frame, area: Rect, app: &mut App) {
     let t = app.theme();
     let keys = [
-        ("Q", "QUIT"),
-        ("?", "HELP"),
-        ("↵", "DOSSIER"),
-        ("V", "TREE"),
-        ("T", "PALETTE"),
-        ("S", "SORT"),
-        ("/", "FILTER"),
-        ("K", "TERMINATE"),
-        ("X", "CRT"),
+        ("Q", "QUIT", KeyCode::Char('q')),
+        ("?", "HELP", KeyCode::Char('?')),
+        ("↵", "DOSSIER", KeyCode::Enter),
+        ("V", "TREE", KeyCode::Char('v')),
+        ("T", "PALETTE", KeyCode::Char('t')),
+        ("S", "SORT", KeyCode::Char('s')),
+        ("/", "FILTER", KeyCode::Char('/')),
+        ("K", "TERMINATE", KeyCode::Char('K')),
+        ("X", "CRT", KeyCode::Char('x')),
     ];
+    app.hits.footer_y = area.y;
     let mut spans = Vec::new();
     let mut used = 0usize;
-    for (k, label) in keys {
+    for (k, label, code) in keys {
         // keep at least 30 columns for the ticker
         let w = k.chars().count() + label.chars().count() + 4;
         if used + w + 32 > area.width as usize && used > 0 {
             break;
         }
+        let x = area.x + used as u16;
+        app.hits.keys.push((x, x + w as u16, code));
         used += w;
         spans.push(Span::styled(
             format!(" {k} "),
@@ -1053,7 +1086,8 @@ fn draw_help(f: &mut Frame, area: Rect, t: &Theme) {
         entry("x", "CRT emulation on / off"),
         entry("+ -", "slower / faster sampling"),
         entry("Space", "freeze telemetry"),
-        entry("q  Esc", "leave the terminal"),
+        entry("q  Esc", "leave the terminal (with a shift report)"),
+        entry("mouse", "click selects, double-click opens, wheel"),
         Line::default(),
         Line::styled("PRESS ANY KEY TO RETURN TO DUTY", Style::new().fg(t.dim)).centered(),
     ];
@@ -1145,7 +1179,7 @@ mod tests {
     use crate::app::{App, KillPrompt};
     use crate::config::Settings;
 
-    const SCREENS: [&str; 8] = [
+    const SCREENS: [&str; 9] = [
         "console",
         "boot",
         "help",
@@ -1154,6 +1188,7 @@ mod tests {
         "lockdown",
         "tree",
         "power-down",
+        "report",
     ];
 
     fn test_app() -> App {
@@ -1181,6 +1216,7 @@ mod tests {
         app.tree = n == 6;
         app.rebuild();
         app.shutdown = (n == 7).then(|| Instant::now() - Duration::from_millis(300));
+        app.report = (n == 8).then(|| Instant::now() - Duration::from_secs(3));
     }
 
     fn dump(term: &Terminal<TestBackend>, w: u16, h: u16) -> String {
@@ -1197,7 +1233,7 @@ mod tests {
 
     /// Renders every screen at a few sizes; fails on panics (out-of-range drawing, etc.).
     /// `UNDERTOP_DUMP=<screen> cargo test -- --nocapture` prints a screen, by name or number
-    /// (console, boot, help, kill, dossier, lockdown, tree, power-down).
+    /// (console, boot, help, kill, dossier, lockdown, tree, power-down, report).
     #[test]
     fn renders_at_many_sizes() {
         let mut app = test_app();

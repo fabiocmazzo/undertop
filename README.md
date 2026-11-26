@@ -76,6 +76,7 @@ interval_ms = 1000       # 250 to 10000
 crt = true               # CRT emulation
 boot = true              # power-on self test
 power_down = true        # CRT switch-off when leaving
+shift_report = true      # end-of-shift report when leaving (§ 5.3)
 lockdown_on_heat = true  # see § 7
 ```
 
@@ -117,7 +118,12 @@ A lit lamp (`◉`) in a station's title means that station needs attention.
 | `+` `-` | slower / faster sampling |
 | `Space` | freeze telemetry |
 | `?` `h` `F1` | this manual, abridged |
-| `q` `Esc` | leave the terminal |
+| `q` `Esc` | leave the terminal (after the shift report) |
+
+The mouse works too: a click selects a process, a double click opens its dossier, the wheel scrolls,
+a click on a column title sorts by it, and the keycaps in the bottom line can be clicked. A click
+outside a dossier or on the manual closes it. Termination is only ever confirmed from the keyboard.
+To select text with the mouse, hold `Shift` while dragging.
 
 ### § 5.1 Dossiers
 
@@ -129,6 +135,13 @@ What belongs to other operators is marked **CLASSIFIED**.
 
 Termination requires authorization. The terminal will ask you to confirm with `Y` (SIGTERM, the
 courteous way) or `9` (SIGKILL, which is not discussed). Any other key aborts the procedure.
+
+### § 5.3 End of shift
+
+Leaving with `q` files a shift report: how long you were on duty, the peak and average reactor load,
+the memory and thermal peaks, what went through comms, and every alert, lockdown, termination and
+dossier, with a verdict from management. Any key signs you out; the report stays printed in your
+terminal afterwards. `Ctrl-C` leaves without paperwork; `shift_report = false` skips it for good.
 
 ## § 6. PHOSPHOR PALETTES
 
@@ -158,7 +171,8 @@ There are rumours of a manual override. Management neither confirms nor denies t
 - Releases: push a tag `vX.Y.Z` with a matching `## vX.Y.Z — Name` section in the shift log; the
   release workflow builds the binary and publishes it with that section as notes.
 - `cargo test` renders every screen at several sizes; `UNDERTOP_DUMP=console cargo test -- --nocapture`
-  prints one as text (`console`, `boot`, `help`, `kill`, `dossier`, `lockdown`, `tree`, `power-down`).
+  prints one as text (`console`, `boot`, `help`, `kill`, `dossier`, `lockdown`, `tree`, `power-down`,
+  `report`).
 - The demo above is recorded with [vhs](https://github.com/charmbracelet/vhs) from
   [`demo/undertop.tape`](demo/undertop.tape) (the shrinking step is at the top of that file).
 

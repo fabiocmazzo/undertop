@@ -9,16 +9,17 @@ use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap};
 
 use super::popup;
 use super::widgets::{big_text, big_text_width, center};
-use crate::app::{App, LOCKDOWN_TIME};
+use crate::app::{App, LOCKDOWN_TIME, REPORT_TIME};
 use crate::sysmon::{fmt_bytes, fmt_duration};
 use crate::theme::lerp;
 
 const CLASSIFIED: &str = "▒▒▒ CLASSIFIED ▒▒▒";
 
-pub fn dossier(f: &mut Frame, area: Rect, app: &App) {
+/// Draws the dossier and returns its box (a click outside it closes it).
+pub fn dossier(f: &mut Frame, area: Rect, app: &App) -> Option<Rect> {
     let t = app.theme();
     let Some((pid, data)) = &app.dossier else {
-        return;
+        return None;
     };
     let w = area.width.saturating_sub(8).min(120);
     let h = area.height.saturating_sub(4).min(34);
@@ -72,7 +73,7 @@ pub fn dossier(f: &mut Frame, area: Rect, app: &App) {
             .centered(),
         ];
         f.render_widget(Paragraph::new(msg), inner);
-        return;
+        return Some(r);
     };
 
     let k = Style::new().fg(t.dim);
@@ -170,6 +171,7 @@ pub fn dossier(f: &mut Frame, area: Rect, app: &App) {
         }
     }
     f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
+    Some(r)
 }
 
 pub fn lockdown(f: &mut Frame, area: Rect, app: &App) {
@@ -256,4 +258,71 @@ fn keep_tail(s: &str, w: usize) -> String {
     } else {
         format!("…{}", s.chars().skip(n - (w - 1)).collect::<String>())
     }
+}
+
+/// The end-of-shift report, typed out one line at a time.
+pub fn report(f: &mut Frame, area: Rect, app: &App) {
+    let t = app.theme();
+    let Some(start) = app.report else {
+        return;
+    };
+    let elapsed = start.elapsed();
+    let items = app.shift.lines(&app.mon);
+    let w = area.width.saturating_sub(4).min(72);
+    // the lines, a blank before the verdict, the borders and a margin of one
+    let h = (items.len() as u16 + 5).min(area.height);
+    let r = popup(area, w, h);
+    f.render_widget(Clear, r);
+    let left = REPORT_TIME.saturating_sub(elapsed).as_secs() + 1;
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Double)
+        .border_style(Style::new().fg(t.bright))
+        .style(Style::new().bg(t.bg))
+        .title(
+            Line::styled(
+                " ╡ END OF SHIFT REPORT ╞ ",
+                Style::new().fg(t.bright).add_modifier(Modifier::BOLD),
+            )
+            .centered(),
+        )
+        .title_bottom(
+            Line::styled(
+                format!(" ANY KEY TO SIGN OUT ▸ AUTOMATIC IN {left}s "),
+                Style::new().fg(t.dim),
+            )
+            .centered(),
+        );
+    let inner = block.inner(r).inner(Margin::new(2, 1));
+    f.render_widget(block, r);
+
+    // one line every 150 ms; the line being typed gets a cursor
+    let shown = (elapsed.as_millis() / 150) as usize;
+    let mut lines = Vec::new();
+    for (i, (k, v)) in items.into_iter().enumerate() {
+        if i > shown {
+            break;
+        }
+        let verdict = k == "VERDICT";
+        if verdict {
+            lines.push(Line::default());
+        }
+        let style = if verdict {
+            Style::new().fg(t.bright).add_modifier(Modifier::BOLD)
+        } else {
+            Style::new().fg(t.fg)
+        };
+        let mut spans = vec![
+            Span::styled(
+                format!("{k:<10} "),
+                Style::new().fg(t.dim).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(v, style),
+        ];
+        if i == shown && (app.frame / 3).is_multiple_of(2) {
+            spans.push(Span::styled("█", Style::new().fg(t.bright)));
+        }
+        lines.push(Line::from(spans));
+    }
+    f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
 }

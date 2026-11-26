@@ -175,6 +175,16 @@ Minimum terminal size is 80x24; it looks best at 160x45 or larger, in a truecolo
     2.1 % of one core, 6.9 MB, 56 KiB/s (13 KiB/s with CRT off). No battery-saver mode: at this cost it
     would not be worth the complexity.
 
+18. **Mouse support through click areas recorded while drawing.** Each frame the UI writes where the
+    manifest rows, sortable column titles, footer keycaps and the dossier box landed (`App::hits`);
+    `App::on_mouse` reads them, so layout and mouse can never disagree. Overlays close on a click like
+    on a key, except the termination dialog, which only the keyboard may confirm, so a stray click can
+    never kill a process. Mouse capture is switched off by a panic hook too, so a crash never leaves
+    the terminal reporting mouse movements.
+19. **End-of-shift report.** `q` shows a report typed out line by line (session stats from
+    `shift::ShiftStats`, recorded after each refresh), then the power-down; any key or 12 s moves on,
+    and the same text is printed to the terminal after it is restored. `Ctrl-C` skips it.
+
 ## Ideas for later
 
 - Per-interface network view.
