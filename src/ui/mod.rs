@@ -3,6 +3,7 @@
 mod boot;
 mod effects;
 mod overlays;
+mod schematic;
 mod widgets;
 
 use chrono::{Local, Timelike};
@@ -38,6 +39,9 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         console(f, area, app);
     }
 
+    if app.schematic.is_some() && area.width >= MIN_W && area.height >= MIN_H && !app.booting {
+        schematic::draw(f, area, app);
+    }
     if app.report.is_some() && area.width >= MIN_W && area.height >= MIN_H {
         overlays::report(f, area, app);
     }
@@ -557,7 +561,43 @@ fn draw_comms(f: &mut Frame, area: Rect, app: &App) {
     if inner.height < 3 {
         return;
     }
-    let [stat, scope] = Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(inner);
+    // one line per interface under the scope, while the scope keeps 3 lines
+    let links = m
+        .ifaces
+        .len()
+        .min(3)
+        .min(inner.height.saturating_sub(4) as usize) as u16;
+    let [stat, scope, list] = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Min(1),
+        Constraint::Length(links),
+    ])
+    .areas(inner);
+    let lines: Vec<Line> = m
+        .ifaces
+        .iter()
+        .take(links as usize)
+        .map(|i| {
+            let idle = i.rx + i.tx < 1.0;
+            let tone = if idle { t.dim } else { t.fg };
+            Line::from(vec![
+                Span::styled(
+                    format!("{:<4}", i.kind.label()),
+                    Style::new().fg(t.bg).bg(tone).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(format!(" {:<11}", fit(&i.name, 11)), Style::new().fg(tone)),
+                Span::styled(
+                    format!("▼{:>10}", format!("{}/s", fmt_bytes(i.rx))),
+                    Style::new().fg(if idle { t.dim } else { t.bright }),
+                ),
+                Span::styled(
+                    format!(" ▲{:>10}", format!("{}/s", fmt_bytes(i.tx))),
+                    Style::new().fg(if idle { t.dim } else { t.warn }),
+                ),
+            ])
+        })
+        .collect();
+    f.render_widget(Paragraph::new(lines), list);
     f.render_widget(
         Paragraph::new(Line::from(vec![
             Span::styled("▼ RX ", Style::new().fg(t.fg)),
@@ -975,6 +1015,7 @@ const TICKER: &[&str] = &[
     "A CLEAN SWAP IS A HAPPY SWAP",
     "LEVEL 142 ▸ PRESSURE SEALS HOLDING",
     "IN CASE OF CONTAINMENT BREACH, DO NOT PRESS !",
+    "SCHEMATICS OF LEVEL 142 ARE RESTRICTED. DO NOT ENTER THE LEVEL NUMBER",
 ];
 
 fn draw_footer(f: &mut Frame, area: Rect, app: &mut App) {
@@ -1179,7 +1220,7 @@ mod tests {
     use crate::app::{App, KillPrompt};
     use crate::config::Settings;
 
-    const SCREENS: [&str; 9] = [
+    const SCREENS: [&str; 13] = [
         "console",
         "boot",
         "help",
@@ -1189,6 +1230,10 @@ mod tests {
         "tree",
         "power-down",
         "report",
+        "access",
+        "elevation",
+        "plan",
+        "safeguard",
     ];
 
     fn test_app() -> App {
@@ -1217,6 +1262,11 @@ mod tests {
         app.rebuild();
         app.shutdown = (n == 7).then(|| Instant::now() - Duration::from_millis(300));
         app.report = (n == 8).then(|| Instant::now() - Duration::from_secs(3));
+        // well into each page, so every timed line is on screen
+        app.schematic = (9..13).contains(&n).then(|| crate::app::Schematic {
+            page: n - 9,
+            page_start: Instant::now() - Duration::from_millis(2900),
+        });
     }
 
     fn dump(term: &Terminal<TestBackend>, w: u16, h: u16) -> String {
@@ -1233,7 +1283,8 @@ mod tests {
 
     /// Renders every screen at a few sizes; fails on panics (out-of-range drawing, etc.).
     /// `UNDERTOP_DUMP=<screen> cargo test -- --nocapture` prints a screen, by name or number
-    /// (console, boot, help, kill, dossier, lockdown, tree, power-down, report).
+    /// (console, boot, help, kill, dossier, lockdown, tree, power-down, report, access, elevation,
+    /// plan, safeguard).
     #[test]
     fn renders_at_many_sizes() {
         let mut app = test_app();

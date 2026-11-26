@@ -122,6 +122,8 @@ pub struct Monitor {
     pub tx: History,
     pub rx_total: u64,
     pub tx_total: u64,
+    /// Network interfaces worth showing, most important first.
+    pub ifaces: Vec<IfaceRow>,
     /// Disk read / write bytes per second (whole devices).
     pub disk_r: History,
     pub disk_w: History,
@@ -184,6 +186,7 @@ impl Monitor {
             tx: History::new(),
             rx_total: 0,
             tx_total: 0,
+            ifaces: Vec::new(),
             mem_total: 0,
             mem_used: 0,
             swap_total: 0,
@@ -258,15 +261,36 @@ impl Monitor {
         let secs = self.dt;
         let (mut rx, mut tx) = (0u64, 0u64);
         let (mut rx_t, mut tx_t) = (0u64, 0u64);
+        self.ifaces.clear();
         for (name, data) in self.networks.iter() {
-            if name.to_string_lossy() == "lo" {
+            let name = name.to_string_lossy();
+            if name == "lo" {
                 continue;
             }
             rx += data.received();
             tx += data.transmitted();
             rx_t += data.total_received();
             tx_t += data.total_transmitted();
+            let row = IfaceRow {
+                kind: iface_kind(&name),
+                name: name.into_owned(),
+                rx: data.received() as f64 / secs,
+                tx: data.transmitted() as f64 / secs,
+                total: data.total_received() + data.total_transmitted(),
+            };
+            // container plumbing only when it carries traffic; idle links never
+            let busy = row.rx + row.tx > 0.0;
+            if (row.kind == IfaceKind::Bridge && !busy) || row.total == 0 {
+                continue;
+            }
+            self.ifaces.push(row);
         }
+        self.ifaces.sort_by(|a, b| {
+            a.kind
+                .cmp(&b.kind)
+                .then((b.rx + b.tx).total_cmp(&(a.rx + a.tx)))
+                .then(a.name.cmp(&b.name))
+        });
         self.rx.push(rx as f64 / secs);
         self.tx.push(tx as f64 / secs);
         self.rx_total = rx_t;
@@ -566,6 +590,70 @@ fn is_whole_disk(name: &str) -> bool {
     digits_tail("mmcblk")
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum IfaceKind {
+    Wire,
+    Wifi,
+    Vpn,
+    Mobile,
+    Bridge,
+    Other,
+}
+
+impl IfaceKind {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Wire => "WIRE",
+            Self::Wifi => "WIFI",
+            Self::Vpn => "VPN",
+            Self::Mobile => "CELL",
+            Self::Bridge => "BRDG",
+            Self::Other => "LINK",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct IfaceRow {
+    pub name: String,
+    pub kind: IfaceKind,
+    /// bytes per second
+    pub rx: f64,
+    pub tx: f64,
+    /// bytes received and sent since boot
+    pub total: u64,
+}
+
+/// What an interface is, from its name (the kernel's and the usual tools' conventions).
+fn iface_kind(name: &str) -> IfaceKind {
+    let has = |prefixes: &[&str]| prefixes.iter().any(|p| name.starts_with(p));
+    if has(&["wl", "wlan", "ath", "ra"]) {
+        IfaceKind::Wifi
+    } else if has(&["en", "eth", "em", "usb"]) {
+        IfaceKind::Wire
+    } else if has(&[
+        "wg",
+        "tun",
+        "tap",
+        "tailscale",
+        "ppp",
+        "proton",
+        "nordlynx",
+        "zt",
+        "ipsec",
+    ]) {
+        IfaceKind::Vpn
+    } else if has(&["wwan", "rmnet", "ww"]) {
+        IfaceKind::Mobile
+    } else if has(&[
+        "docker", "br-", "br", "veth", "virbr", "vnet", "cni", "flannel", "podman", "lxc",
+    ]) {
+        IfaceKind::Bridge
+    } else {
+        IfaceKind::Other
+    }
+}
+
 fn process_kind() -> ProcessRefreshKind {
     ProcessRefreshKind::nothing()
         .with_cpu()
@@ -643,7 +731,19 @@ pub fn fmt_duration(secs: u64) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::is_whole_disk;
+    use super::{IfaceKind, iface_kind, is_whole_disk};
+
+    #[test]
+    fn classifies_interfaces() {
+        assert_eq!(iface_kind("wlp0s20f3"), IfaceKind::Wifi);
+        assert_eq!(iface_kind("enp3s0"), IfaceKind::Wire);
+        assert_eq!(iface_kind("eth0"), IfaceKind::Wire);
+        assert_eq!(iface_kind("wg0"), IfaceKind::Vpn);
+        assert_eq!(iface_kind("tailscale0"), IfaceKind::Vpn);
+        assert_eq!(iface_kind("docker0"), IfaceKind::Bridge);
+        assert_eq!(iface_kind("veth1a2b"), IfaceKind::Bridge);
+        assert_eq!(iface_kind("wwan0"), IfaceKind::Mobile);
+    }
 
     #[test]
     fn whole_disks_only() {

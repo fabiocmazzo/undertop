@@ -77,6 +77,7 @@ crt = true               # CRT emulation
 boot = true              # power-on self test
 power_down = true        # CRT switch-off when leaving
 shift_report = true      # end-of-shift report when leaving (§ 5.3)
+voice = true             # robotic voice for announcements (needs espeak-ng, espeak or spd-say)
 lockdown_on_heat = true  # see § 7
 ```
 
@@ -88,7 +89,7 @@ lockdown_on_heat = true  # see § 7
 | 01 | **REACTOR CORE** | one gauge per logical CPU, total output history |
 | 02 | **RESERVOIR** | memory and swap as liquid tanks, free/used figures, the battery as the *aux power cell* |
 | 03 | **THERMAL** | every hwmon sensor against its critical temperature |
-| 04 | **COMMS** | network receive/transmit rates as an oscilloscope |
+| 04 | **COMMS** | network receive/transmit rates as an oscilloscope, and each link (wire, wifi, VPN) with its own rates |
 | 05 | **VAULTS** | mounted filesystems, how full they are, disk read/write rates |
 | 06 | **MANIFEST** | every process on the node: operator, load, memory, state, time, command |
 | 07 | **AUX REACTOR** | GPUs: Intel iGPU frequency, NVIDIA load, temperature and VRAM (wide screens only) |
@@ -129,6 +130,7 @@ To select text with the mouse, hold `Shift` while dragging.
 
 `Enter` opens everything the terminal knows about a process: parent and children, start time, threads,
 resident and virtual memory, disk I/O, executable, working directory, control group, and its open files.
+While it stays open, it charts the process's CPU and resident memory.
 What belongs to other operators is marked **CLASSIFIED**.
 
 ### § 5.2 Termination of a process
@@ -164,6 +166,10 @@ operators who prefer to burn quietly.)
 
 There are rumours of a manual override. Management neither confirms nor denies them.
 
+The facility schematics are restricted. Operators are reminded that their terminal sits on level 142,
+and that curiosity is noted. If a speech synthesizer such as `espeak-ng` is installed, the facility
+will tell you so out loud (`voice = false` to keep it quiet).
+
 ## § 8. FOR MAINTENANCE PERSONNEL
 
 - Design notes and every decision taken so far: [`projeto.md`](projeto.md).
@@ -172,7 +178,7 @@ There are rumours of a manual override. Management neither confirms nor denies t
   release workflow builds the binary and publishes it with that section as notes.
 - `cargo test` renders every screen at several sizes; `UNDERTOP_DUMP=console cargo test -- --nocapture`
   prints one as text (`console`, `boot`, `help`, `kill`, `dossier`, `lockdown`, `tree`, `power-down`,
-  `report`).
+  `report`, `access`, `elevation`, `plan`, `safeguard`).
 - The demo above is recorded with [vhs](https://github.com/charmbracelet/vhs) from
   [`demo/undertop.tape`](demo/undertop.tape) (the shrinking step is at the top of that file).
 

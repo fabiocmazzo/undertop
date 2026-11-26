@@ -16,7 +16,7 @@ use ratatui::widgets::TableState;
 
 use crate::config::Settings;
 use crate::shift::ShiftStats;
-use crate::sysmon::{Dossier, Monitor, ProcRow};
+use crate::sysmon::{Dossier, History, Monitor, ProcRow};
 use crate::theme::{THEMES, Theme};
 use crate::ui;
 
@@ -36,6 +36,24 @@ const ALERT_TIME: Duration = Duration::from_secs(6);
 const LOCKDOWN_THEME: usize = 3;
 /// The shift report signs itself out after this long.
 pub const REPORT_TIME: Duration = Duration::from_secs(12);
+/// How long each schematic page stays up before the next one.
+pub const SCHEMATIC_PAGES: [Duration; 4] = [
+    Duration::from_millis(3200),
+    Duration::from_secs(9),
+    Duration::from_secs(9),
+    Duration::from_secs(9),
+];
+/// The last schematic page: what the facility says about operators who look at schematics.
+pub const SAFEGUARD_PAGE: usize = 3;
+/// Typed in the manifest, opens the facility schematic.
+const SCHEMATIC_CODE: &str = "142";
+
+/// The facility schematic easter egg: a short sequence of screens.
+pub struct Schematic {
+    pub page: usize,
+    pub page_start: Instant,
+}
+
 /// Two clicks on the same row within this time open its dossier.
 const DOUBLE_CLICK: Duration = Duration::from_millis(400);
 
@@ -124,6 +142,12 @@ pub struct App {
     /// PID whose dossier is open, and its data (refreshed with the telemetry).
     pub dossier: Option<(u32, Option<Dossier>)>,
     pub lockdown: Option<Lockdown>,
+    /// CPU % and resident memory of the dossier's process, sampled since it was opened.
+    pub dossier_cpu: History,
+    pub dossier_mem: History,
+    pub schematic: Option<Schematic>,
+    /// The last digits typed in the manifest, for `SCHEMATIC_CODE`.
+    typed: String,
     /// When the end-of-shift report appeared (after `q`).
     pub report: Option<Instant>,
     pub shift: ShiftStats,
@@ -166,6 +190,10 @@ impl App {
             dossier: None,
             lockdown: None,
             report: None,
+            dossier_cpu: History::new(),
+            dossier_mem: History::new(),
+            schematic: None,
+            typed: String::new(),
             shift: ShiftStats::new(),
             hits: Hits::default(),
             last_click: None,
@@ -243,6 +271,11 @@ impl App {
         if self.shutdown.is_none() && self.report.is_some_and(|t| t.elapsed() >= REPORT_TIME) {
             self.power_down();
         }
+        if let Some(s) = &self.schematic
+            && s.page_start.elapsed() >= SCHEMATIC_PAGES[s.page]
+        {
+            self.next_schematic_page();
+        }
         if self.booting && self.boot_start.elapsed() >= BOOT_TIME {
             self.booting = false;
         }
@@ -256,6 +289,7 @@ impl App {
             self.shift.record(&self.mon);
             if let Some((pid, _)) = self.dossier {
                 self.dossier = Some((pid, self.mon.dossier(pid)));
+                self.sample_dossier();
             }
             self.check_heat();
         }
@@ -325,6 +359,7 @@ impl App {
             }
         };
         self.theme_idx = LOCKDOWN_THEME;
+        self.schematic = None;
         self.lockdown = Some(Lockdown {
             start: Instant::now(),
             reason,
@@ -432,6 +467,41 @@ impl App {
         if let Some(pid) = self.selected().map(|p| p.pid) {
             self.dossier = Some((pid, self.mon.dossier(pid)));
             self.shift.dossiers += 1;
+            self.dossier_cpu = History::new();
+            self.dossier_mem = History::new();
+            self.sample_dossier();
+        }
+    }
+
+    fn sample_dossier(&mut self) {
+        if let Some((_, Some(d))) = &self.dossier {
+            self.dossier_cpu.push(d.row.cpu as f64);
+            self.dossier_mem.push(d.row.mem as f64);
+        }
+    }
+
+    pub(crate) fn open_schematic(&mut self) {
+        self.schematic = Some(Schematic {
+            page: 0,
+            page_start: Instant::now(),
+        });
+    }
+
+    fn next_schematic_page(&mut self) {
+        if let Some(s) = &mut self.schematic {
+            if s.page + 1 < SCHEMATIC_PAGES.len() {
+                s.page += 1;
+                s.page_start = Instant::now();
+                if s.page == SAFEGUARD_PAGE {
+                    self.bell = true;
+                    if self.settings.voice {
+                        crate::voice::say("Attention. Safeguard will be activated.");
+                    }
+                }
+            } else {
+                self.schematic = None;
+                self.flash("SCHEMATIC SEALED ▸ YOU SAW NOTHING");
+            }
         }
     }
 
@@ -451,7 +521,12 @@ impl App {
         if self.shutdown.is_some() || self.kill.is_some() {
             return;
         }
-        if self.booting || self.report.is_some() || self.lockdown.is_some() || self.show_help {
+        if self.booting
+            || self.report.is_some()
+            || self.schematic.is_some()
+            || self.lockdown.is_some()
+            || self.show_help
+        {
             if click {
                 self.on_key(KeyEvent::from(KeyCode::Char(' ')));
             }
@@ -520,6 +595,14 @@ impl App {
             self.power_down();
             return;
         }
+        if self.schematic.is_some() {
+            if matches!(key.code, KeyCode::Esc | KeyCode::Char('q')) {
+                self.schematic = None;
+            } else {
+                self.next_schematic_page();
+            }
+            return;
+        }
         if self.lockdown.is_some() {
             self.end_lockdown();
             return;
@@ -567,6 +650,18 @@ impl App {
             return;
         }
         let page = 10;
+        if let KeyCode::Char(c @ '0'..='9') = key.code {
+            self.typed.push(c);
+            if self.typed.len() > SCHEMATIC_CODE.len() {
+                self.typed.remove(0);
+            }
+            if self.typed == SCHEMATIC_CODE {
+                self.typed.clear();
+                self.open_schematic();
+            }
+            return;
+        }
+        self.typed.clear();
         match key.code {
             KeyCode::Char('q') | KeyCode::Esc => self.leave(),
             KeyCode::Char('?') | KeyCode::Char('h') | KeyCode::F(1) => self.show_help = true,
@@ -860,6 +955,27 @@ mod tests {
             assert!(app.report.is_some() && app.shutdown.is_none());
             app.on_key(KeyEvent::from(KeyCode::Char('z')));
             assert!(app.shutdown.is_some());
+        }
+
+        #[test]
+        fn typing_142_opens_the_schematic_and_keys_walk_it() {
+            let (mut app, _term) = drawn_app();
+            app.settings.voice = false;
+            for c in "9142".chars() {
+                app.on_key(KeyEvent::from(KeyCode::Char(c)));
+            }
+            assert_eq!(app.schematic.as_ref().map(|s| s.page), Some(0));
+            for page in 1..SCHEMATIC_PAGES.len() {
+                app.on_key(KeyEvent::from(KeyCode::Char(' ')));
+                assert_eq!(app.schematic.as_ref().map(|s| s.page), Some(page));
+            }
+            app.on_key(KeyEvent::from(KeyCode::Char(' ')));
+            assert!(app.schematic.is_none());
+            // a digit typed with another key between them does not count
+            for c in ['1', '4', 'v', '2'] {
+                app.on_key(KeyEvent::from(KeyCode::Char(c)));
+            }
+            assert!(app.schematic.is_none());
         }
 
         #[test]

@@ -7,6 +7,7 @@ mod shift;
 mod sysmon;
 mod theme;
 mod ui;
+mod voice;
 
 use std::io::stdout;
 use std::path::PathBuf;

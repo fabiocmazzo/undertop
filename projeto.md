@@ -185,6 +185,22 @@ Minimum terminal size is 80x24; it looks best at 160x45 or larger, in a truecolo
     `shift::ShiftStats`, recorded after each refresh), then the power-down; any key or 12 s moves on,
     and the same text is printed to the terminal after it is restored. `Ctrl-C` skips it.
 
+20. **Dossier trends** are kept in the app (`App::dossier_cpu`, `dossier_mem`), reset when a dossier
+    opens and fed after each refresh, so nothing is sampled for processes nobody is looking at. CPU
+    scales to at least one full core, memory to its own peak.
+21. **Network links** come from sysinfo's per-interface counters; the kind is guessed from the name
+    (`wl*` wifi, `en*`/`eth*` wire, `wg*`/`tun*`/`tailscale*`/`zt*` VPN, `wwan*` cellular,
+    `docker*`/`br-*`/`veth*` bridges). Bridges show only while they carry traffic, links that never
+    carried any are hidden, and COMMS lists at most 3 under the scope.
+22. **The level 142 schematic** (typing `142` in the manifest) is a sequence of four sheets: access
+    check, elevation (144 levels, one band per CPU core, lit by its load), plan (a ring-and-sector
+    cross-section drawn on a braille canvas, the busiest processes lighting sectors under a radar
+    sweep) and SAFEGUARD. Inspired by the schematic screens in the series, drawn from scratch. The
+    last sheet rings the bell and, when `voice` is on, says "Safeguard will be activated" through the
+    first speech synthesizer found (`espeak-ng` with its robotic variant, `espeak`, `spd-say`), run
+    in the background and reaped on its own thread. Without one, it stays silent. A heat lockdown
+    closes the schematic so the alarm is never hidden.
+
 ## Ideas for later
 
 - Per-interface network view.

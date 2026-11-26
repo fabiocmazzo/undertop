@@ -8,6 +8,10 @@ Changes to the terminal, newest shift first.
   by it, click the keycaps in the bottom line. The termination dialog still wants the keyboard.
 - End-of-shift report when leaving with `q`: time on duty, peaks, traffic, incidents and a verdict,
   also left printed in the terminal (`shift_report = false` to skip it).
+- The dossier charts the process's CPU and resident memory while it is open.
+- COMMS lists each network link (wire, wifi, VPN, cellular) with its own rates; idle container
+  bridges stay hidden.
+- Something on level 142. With a speech synthesizer installed, it speaks.
 
 ## v0.2.1 — Conservation Order
 

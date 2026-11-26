@@ -2,13 +2,13 @@
 
 use chrono::{Local, TimeZone};
 use ratatui::Frame;
-use ratatui::layout::{Margin, Rect};
+use ratatui::layout::{Constraint, Layout, Margin, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap};
 
 use super::popup;
-use super::widgets::{big_text, big_text_width, center};
+use super::widgets::{area_chart, big_text, big_text_width, center};
 use crate::app::{App, LOCKDOWN_TIME, REPORT_TIME};
 use crate::sysmon::{fmt_bytes, fmt_duration};
 use crate::theme::lerp;
@@ -74,6 +74,20 @@ pub fn dossier(f: &mut Frame, area: Rect, app: &App) -> Option<Rect> {
         ];
         f.render_widget(Paragraph::new(msg), inner);
         return Some(r);
+    };
+
+    // trend charts along the bottom, when the box is tall enough
+    let inner = if inner.height >= 16 {
+        let [text, _, charts] = Layout::vertical([
+            Constraint::Min(1),
+            Constraint::Length(1),
+            Constraint::Length(5),
+        ])
+        .areas(inner);
+        dossier_charts(f, charts, app);
+        text
+    } else {
+        inner
     };
 
     let k = Style::new().fg(t.dim);
@@ -257,6 +271,52 @@ fn keep_tail(s: &str, w: usize) -> String {
         s.to_string()
     } else {
         format!("…{}", s.chars().skip(n - (w - 1)).collect::<String>())
+    }
+}
+
+/// CPU and memory of the dossier's process since the dossier was opened, side by side.
+fn dossier_charts(f: &mut Frame, area: Rect, app: &App) {
+    let t = app.theme();
+    let [cpu, mem] = Layout::horizontal([Constraint::Fill(1), Constraint::Fill(1)])
+        .spacing(2)
+        .areas(area);
+    let samples = app.dossier_cpu.tail(usize::MAX).count();
+    for (r, hist, name, unit_max, show) in [
+        (
+            cpu,
+            &app.dossier_cpu,
+            "CPU",
+            100.0,
+            &(|v: f64| format!("{v:.1}%")) as &dyn Fn(f64) -> String,
+        ),
+        (
+            mem,
+            &app.dossier_mem,
+            "RESIDENT",
+            1.0,
+            &(|v: f64| fmt_bytes(v)) as &dyn Fn(f64) -> String,
+        ),
+    ] {
+        let [head, plot] = Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(r);
+        // CPU scales to at least one full core; memory to its own peak, so small changes show
+        let top = (hist.max() * 1.1).max(unit_max);
+        let values: Vec<f64> = hist.tail(plot.width as usize).map(|v| v / top).collect();
+        let head_text = if samples < 2 {
+            format!("{name} ▸ {} ▸ SAMPLING…", show(hist.last()))
+        } else {
+            format!("{name} ▸ {} ▸ PEAK {}", show(hist.last()), show(hist.max()))
+        };
+        f.render_widget(
+            Paragraph::new(Line::from(vec![
+                Span::styled("▌", Style::new().fg(t.bright)),
+                Span::styled(
+                    head_text,
+                    Style::new().fg(t.dim).add_modifier(Modifier::BOLD),
+                ),
+            ])),
+            head,
+        );
+        area_chart(f.buffer_mut(), plot, &values, &t, None);
     }
 }
 

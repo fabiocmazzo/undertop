@@ -34,6 +34,9 @@ power_down = true
 # end-of-shift report when leaving with q (also printed to the terminal afterwards)
 shift_report = true
 
+# robotic voice for facility announcements (uses espeak-ng, espeak or spd-say if installed)
+voice = true
+
 # seal the facility (LOCKDOWN palette, alarm) when a sensor reaches 95 °C
 # or 95 % of its critical temperature; at most once every 10 minutes
 lockdown_on_heat = true
@@ -49,6 +52,7 @@ struct File {
     power_down: Option<bool>,
     shift_report: Option<bool>,
     lockdown_on_heat: Option<bool>,
+    voice: Option<bool>,
 }
 
 #[derive(Debug, Clone)]
@@ -60,6 +64,7 @@ pub struct Settings {
     pub power_down: bool,
     pub shift_report: bool,
     pub lockdown_on_heat: bool,
+    pub voice: bool,
 }
 
 impl Default for Settings {
@@ -72,6 +77,7 @@ impl Default for Settings {
             power_down: true,
             shift_report: true,
             lockdown_on_heat: true,
+            voice: true,
         }
     }
 }
@@ -120,6 +126,7 @@ impl Settings {
         s.power_down = f.power_down.unwrap_or(s.power_down);
         s.shift_report = f.shift_report.unwrap_or(s.shift_report);
         s.lockdown_on_heat = f.lockdown_on_heat.unwrap_or(s.lockdown_on_heat);
+        s.voice = f.voice.unwrap_or(s.voice);
         Ok(s)
     }
 }
