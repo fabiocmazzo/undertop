@@ -1,6 +1,6 @@
 pkgbase = undertop
 	pkgdesc = A system monitor dressed as the operations console of an underground silo
-	pkgver = 0.3.0
+	pkgver = 0.3.1
 	pkgrel = 1
 	url = https://github.com/fabiocmazzo/undertop
 	arch = x86_64
@@ -11,7 +11,7 @@ pkgbase = undertop
 	depends = libgcc
 	optdepends = espeak-ng: robotic voice for facility announcements
 	optdepends = nvidia-utils: AUX REACTOR readings for NVIDIA GPUs
-	source = undertop-0.3.0.tar.gz::https://github.com/fabiocmazzo/undertop/archive/refs/tags/v0.3.0.tar.gz
-	sha256sums = 1b05c113c29a574415c79f4601b25dc778f3c1c1dc491983546edf074a1ccc27
+	source = undertop-0.3.1.tar.gz::https://github.com/fabiocmazzo/undertop/archive/refs/tags/v0.3.1.tar.gz
+	sha256sums = 54ad7b011a8974543d1b9e7abed7bae665ae524e30484fe0fdfe7d431ce0e3b4
 
 pkgname = undertop

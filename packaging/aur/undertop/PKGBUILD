@@ -1,7 +1,7 @@
 # Maintainer: Fabio Covolo Mazzo <https://github.com/fabiocmazzo>
 
 pkgname=undertop
-pkgver=0.3.0
+pkgver=0.3.1
 pkgrel=1
 pkgdesc="A system monitor dressed as the operations console of an underground silo"
 arch=('x86_64' 'aarch64')
@@ -12,7 +12,7 @@ makedepends=('cargo')
 optdepends=('espeak-ng: robotic voice for facility announcements'
             'nvidia-utils: AUX REACTOR readings for NVIDIA GPUs')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('1b05c113c29a574415c79f4601b25dc778f3c1c1dc491983546edf074a1ccc27')
+sha256sums=('54ad7b011a8974543d1b9e7abed7bae665ae524e30484fe0fdfe7d431ce0e3b4')
 
 prepare() {
   cd "$pkgname-$pkgver"

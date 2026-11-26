@@ -2,7 +2,7 @@
 
 pkgname=undertop-bin
 _pkgname=undertop
-pkgver=0.3.0
+pkgver=0.3.1
 pkgrel=1
 pkgdesc="A system monitor dressed as the operations console of an underground silo (prebuilt binary)"
 arch=('x86_64')
@@ -16,7 +16,7 @@ conflicts=("$_pkgname")
 # a prebuilt, already stripped binary: nothing for a debug package to hold
 options=('!debug')
 source_x86_64=("$_pkgname-$pkgver-$CARCH.tar.gz::$url/releases/download/v$pkgver/$_pkgname-v$pkgver-$CARCH-linux.tar.gz")
-sha256sums_x86_64=('d43806e5c35e45f70f02ecd25932ba35da210e45b5a5504440bddb565f11de0b')
+sha256sums_x86_64=('b6616071101ac47d66a9147b09947adf246b9a12c190c73d122af72339b6a7f9')
 
 package() {
   cd "$_pkgname-v$pkgver-$CARCH-linux"
