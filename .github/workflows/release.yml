@@ -1,9 +1,15 @@
 name: Release
 
 # Push a tag like v0.1.0 to build the Linux binary and publish a GitHub release.
+# Run by hand with a tag to only bring packaging/aur up to that release (e.g. if that job failed).
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag whose PKGBUILDs to write (e.g. v0.3.0)"
+        required: true
 
 permissions:
   contents: write
@@ -13,6 +19,7 @@ env:
 
 jobs:
   release:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -38,3 +45,49 @@ jobs:
           awk -v v="$GITHUB_REF_NAME" '/^## /{p = index($0, "## " v) == 1; next} p' SHIFT_LOG.md > notes.md
           gh release create "$GITHUB_REF_NAME" undertop-*.tar.gz undertop-*.tar.gz.sha256 \
             --title "${title:-$GITHUB_REF_NAME}" --notes-file notes.md
+
+  # Keeps packaging/aur on main in step with the release, for install-arch.sh and the AUR.
+  pkgbuilds:
+    needs: release
+    # also when started by hand, where the release job is skipped
+    if: ${{ !cancelled() && needs.release.result != 'failure' }}
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      # git first, so checkout makes a real repository to commit in
+      - name: Tools
+        run: pacman -Syu --noconfirm --needed git pacman-contrib namcap
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+      - name: Update the PKGBUILDs
+        run: |
+          # makepkg refuses to run as root
+          useradd -m builder
+          chown -R builder .
+          su builder -c "packaging/aur/update.sh '$TAG'"
+      - name: Check undertop-bin
+        run: |
+          dir=$(mktemp -d) && cp packaging/aur/undertop-bin/PKGBUILD "$dir/" && chown -R builder "$dir"
+          su builder -c "cd '$dir' && makepkg -f --noconfirm && namcap PKGBUILD *.pkg.tar.zst" | tee namcap.txt
+          # namcap exits 0 even on errors
+          ! grep -q " E: " namcap.txt
+      - name: Commit to main
+        run: |
+          git config --global --add safe.directory "$PWD"
+          if git diff --quiet -- packaging/aur; then
+            echo "PKGBUILDs already at $TAG"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packaging/aur
+          git commit -m "packaging/aur: update to $TAG"
+          # main may have moved while the release was built
+          for try in 1 2 3; do
+            git push origin HEAD:main && exit 0
+            git pull --rebase origin main
+          done
+          exit 1

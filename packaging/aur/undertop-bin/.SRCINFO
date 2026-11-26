@@ -11,6 +11,7 @@ pkgbase = undertop-bin
 	optdepends = nvidia-utils: AUX REACTOR readings for NVIDIA GPUs
 	provides = undertop
 	conflicts = undertop
+	options = !debug
 	source_x86_64 = undertop-0.3.0-x86_64.tar.gz::https://github.com/fabiocmazzo/undertop/releases/download/v0.3.0/undertop-v0.3.0-x86_64-linux.tar.gz
 	sha256sums_x86_64 = d43806e5c35e45f70f02ecd25932ba35da210e45b5a5504440bddb565f11de0b
 

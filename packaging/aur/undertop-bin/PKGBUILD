@@ -13,6 +13,8 @@ optdepends=('espeak-ng: robotic voice for facility announcements'
             'nvidia-utils: AUX REACTOR readings for NVIDIA GPUs')
 provides=("$_pkgname")
 conflicts=("$_pkgname")
+# a prebuilt, already stripped binary: nothing for a debug package to hold
+options=('!debug')
 source_x86_64=("$_pkgname-$pkgver-$CARCH.tar.gz::$url/releases/download/v$pkgver/$_pkgname-v$pkgver-$CARCH-linux.tar.gz")
 sha256sums_x86_64=('d43806e5c35e45f70f02ecd25932ba35da210e45b5a5504440bddb565f11de0b')
 

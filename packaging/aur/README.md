@@ -25,10 +25,14 @@ Then do the same for `undertop-bin`.
 
 ## After each release
 
-1. Set `pkgver` to the new version and `pkgrel=1`.
-2. Run `updpkgsums` to fetch the new tarball and write its checksum.
-3. Run `makepkg --printsrcinfo > .SRCINFO`.
-4. Run `makepkg -f && namcap PKGBUILD *.pkg.tar.zst` to try it.
-5. Copy `PKGBUILD` and `.SRCINFO` to the AUR repository, then commit and push.
+The release workflow does this by itself. Its `pkgbuilds` job runs after the release is published:
 
-Do this for both packages.
+1. It runs [`update.sh`](update.sh) with the tag, which sets `pkgver`, resets `pkgrel` to 1, writes the
+   new checksums with `updpkgsums` and regenerates the `.SRCINFO` files.
+2. It builds `undertop-bin` and checks it with `namcap`.
+3. It commits the result to `main` as `packaging/aur: update to vX.Y.Z`.
+
+By hand, the same thing is `packaging/aur/update.sh 0.3.1`. To publish to the AUR, copy each `PKGBUILD`
+and `.SRCINFO` to its AUR repository, then commit and push.
+
+A packaging-only fix (same version) is a manual `pkgrel` bump followed by `update.sh` with the same version.
