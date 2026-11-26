@@ -2,7 +2,7 @@
 
 Changes to the terminal, newest shift first.
 
-## Unreleased
+## v0.3.0 — Level 142
 
 - Mouse: click to select, double click for the dossier, wheel to scroll, click a column title to sort
   by it, click the keycaps in the bottom line. The termination dialog still wants the keyboard.
