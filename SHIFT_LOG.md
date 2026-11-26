@@ -2,7 +2,7 @@
 
 Changes to the terminal, newest shift first.
 
-## Unreleased
+## v0.2.1 — Conservation Order
 
 - Less than half the CPU (5.1 % → 2.1 % of one core) and a third of the memory (18 → 7 MB): no more
   reading 3000 threads and every process's I/O each second; NVMe sensors read every 5 s.
