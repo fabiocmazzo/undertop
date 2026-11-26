@@ -113,6 +113,10 @@ supervisor.
 - The demo above is recorded with [vhs](https://github.com/charmbracelet/vhs) from
   [`demo/undertop.tape`](demo/undertop.tape) (the shrinking step is at the top of that file).
 
+## § 9. LICENSE
+
+MIT. See [`LICENSE`](LICENSE).
+
 ```
 REMAIN CALM. REMAIN BELOW.   ◆   THE MAINFRAME SEES ALL THREADS   ◆   A CLEAN SWAP IS A HAPPY SWAP
 ```
