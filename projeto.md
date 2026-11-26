@@ -212,7 +212,11 @@ Minimum terminal size is 80x24; it looks best at 160x45 or larger, in a truecolo
 
     In `packaging/aur`, `undertop` builds the tag with `cargo --frozen` and runs the tests in `check()`,
     and `undertop-bin` repackages the release tarball. Publishing them to the AUR needs the maintainer's
-    account, so the repository only keeps the files and the steps.
+    account, so the repository only keeps the files and the steps. While AUR registration is closed,
+    `install-arch.sh` downloads one of these PKGBUILDs from `main` and runs `makepkg -si` on it, with
+    `/dev/tty` as its input, because under `curl | sh` the script's stdin is the download itself and
+    pacman's questions and sudo's password need the terminal. The PKGBUILDs on `main` therefore have to
+    follow every release.
 
 ## Ideas for later
 

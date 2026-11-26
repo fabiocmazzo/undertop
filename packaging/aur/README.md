@@ -8,6 +8,9 @@
 Both were built with `makepkg` and checked with `namcap`. The only warning left is the usual "unused shared
 library ld-linux" that every Rust binary gets.
 
+Until they are on the AUR, [`install-arch.sh`](../../install-arch.sh) builds and installs them with
+`makepkg -si` straight from this directory, so the `PKGBUILD` here must always match the latest release.
+
 ## First publication
 
 Each package is its own git repository on the AUR. You need an AUR account with your SSH public key.

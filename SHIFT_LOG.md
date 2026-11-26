@@ -5,7 +5,8 @@ Changes to the terminal, newest shift first.
 ## Unreleased
 
 - One-line install: `curl -fsSL https://raw.githubusercontent.com/fabiocmazzo/undertop/main/install.sh | sh`.
-- PKGBUILDs for the AUR (`undertop` and `undertop-bin`).
+- PKGBUILDs for the AUR (`undertop` and `undertop-bin`), and `install-arch.sh`, which installs them as
+  pacman packages with one line until they are published there.
 
 ## v0.3.0 — Level 142
 

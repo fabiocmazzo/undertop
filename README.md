@@ -48,6 +48,13 @@ curl -fsSL https://raw.githubusercontent.com/fabiocmazzo/undertop/main/install.s
 `UNDERTOP_VERSION=v0.3.0` picks a release and `UNDERTOP_INSTALL_DIR` another directory. Read
 [`install.sh`](install.sh) first if you prefer: it is short.
 
+On Arch Linux and its derivatives, this one installs it as a pacman package instead (`undertop-bin`;
+`UNDERTOP_PKG=undertop` builds it from source), removable with `sudo pacman -R undertop-bin`:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/fabiocmazzo/undertop/main/install-arch.sh | sh
+```
+
 Or download the binary from the [latest release](https://github.com/fabiocmazzo/undertop/releases/latest),
 or build it:
 
