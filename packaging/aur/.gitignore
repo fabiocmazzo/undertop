@@ -1,0 +1,5 @@
+# makepkg leftovers
+*.tar.gz
+*.pkg.tar.*
+src/
+pkg/

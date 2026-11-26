@@ -1,0 +1,42 @@
+# Maintainer: Fabio Covolo Mazzo <https://github.com/fabiocmazzo>
+
+pkgname=undertop
+pkgver=0.3.0
+pkgrel=1
+pkgdesc="A system monitor dressed as the operations console of an underground silo"
+arch=('x86_64' 'aarch64')
+url="https://github.com/fabiocmazzo/undertop"
+license=('MIT')
+depends=('glibc' 'libgcc')
+makedepends=('cargo')
+optdepends=('espeak-ng: robotic voice for facility announcements'
+            'nvidia-utils: AUX REACTOR readings for NVIDIA GPUs')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('1b05c113c29a574415c79f4601b25dc778f3c1c1dc491983546edf074a1ccc27')
+
+prepare() {
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable
+  cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+}
+
+build() {
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable
+  export CARGO_TARGET_DIR=target
+  cargo build --frozen --release
+}
+
+check() {
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable
+  export CARGO_TARGET_DIR=target
+  cargo test --frozen --release
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+  install -Dm755 "target/release/$pkgname" -t "$pkgdir/usr/bin/"
+  install -Dm644 LICENSE -t "$pkgdir/usr/share/licenses/$pkgname/"
+  install -Dm644 README.md SHIFT_LOG.md -t "$pkgdir/usr/share/doc/$pkgname/"
+}

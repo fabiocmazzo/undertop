@@ -201,6 +201,19 @@ Minimum terminal size is 80x24; it looks best at 160x45 or larger, in a truecolo
     in the background and reaped on its own thread. Without one, it stays silent. A heat lockdown
     closes the schematic so the alarm is never hidden.
 
+23. **Distribution: an install script and two AUR packages.** `install.sh` is POSIX sh (tested with
+    bash and with Debian's dash) and does the following:
+    - finds the latest tag through the `/releases/latest` redirect, so it needs no API call and hits no
+      rate limit;
+    - checks the release's `.sha256` before installing;
+    - installs to `~/.local/bin` without root;
+    - replaces the binary by rename, so an undertop that is running is not overwritten in place;
+    - runs everything from `main`, so a download cut short does nothing.
+
+    In `packaging/aur`, `undertop` builds the tag with `cargo --frozen` and runs the tests in `check()`,
+    and `undertop-bin` repackages the release tarball. Publishing them to the AUR needs the maintainer's
+    account, so the repository only keeps the files and the steps.
+
 ## Ideas for later
 
 - Per-interface network view.

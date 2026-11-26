@@ -39,7 +39,16 @@ Written in Rust with [ratatui](https://ratatui.rs/) and [sysinfo](https://crates
 
 ## § 3. COMMISSIONING THE TERMINAL
 
-Download the Linux binary from the [latest release](https://github.com/fabiocmazzo/undertop/releases/latest),
+One line, no root (x86_64; it checks the download's SHA-256 and installs to `~/.local/bin`):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/fabiocmazzo/undertop/main/install.sh | sh
+```
+
+`UNDERTOP_VERSION=v0.3.0` picks a release and `UNDERTOP_INSTALL_DIR` another directory. Read
+[`install.sh`](install.sh) first if you prefer: it is short.
+
+Or download the binary from the [latest release](https://github.com/fabiocmazzo/undertop/releases/latest),
 or build it:
 
 ```sh
@@ -174,6 +183,8 @@ will tell you so out loud (`voice = false` to keep it quiet).
 
 - Design notes and every decision taken so far: [`projeto.md`](projeto.md).
 - What changed in each version: [`SHIFT_LOG.md`](SHIFT_LOG.md).
+- AUR packages (`undertop` from source, `undertop-bin` prebuilt): [`packaging/aur`](packaging/aur), with
+  the steps to update them after a release.
 - Releases: push a tag `vX.Y.Z` with a matching `## vX.Y.Z — Name` section in the shift log; the
   release workflow builds the binary and publishes it with that section as notes.
 - `cargo test` renders every screen at several sizes; `UNDERTOP_DUMP=console cargo test -- --nocapture`

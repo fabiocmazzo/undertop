@@ -2,6 +2,11 @@
 
 Changes to the terminal, newest shift first.
 
+## Unreleased
+
+- One-line install: `curl -fsSL https://raw.githubusercontent.com/fabiocmazzo/undertop/main/install.sh | sh`.
+- PKGBUILDs for the AUR (`undertop` and `undertop-bin`).
+
 ## v0.3.0 — Level 142
 
 - Mouse: click to select, double click for the dossier, wheel to scroll, click a column title to sort
