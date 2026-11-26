@@ -72,7 +72,8 @@ cargo run --release
 | Flag | Effect |
 | --- | --- |
 | `--no-boot` | skip the power-on self test |
-| `--theme <amber\|phosphor\|cobalt\|lockdown>` | start with another palette |
+| `--theme <amber\|phosphor\|cobalt\|lockdown\|silo>` | start with another palette |
+| `--panels <list>` | stations to show, e.g. `cpu,memory,procs` (see § 3.1) |
 | `--config <path>` | read another config file |
 | `--print-config` | print a config template with every default |
 | `--help` | print usage |
@@ -87,7 +88,8 @@ mkdir -p ~/.config/undertop && undertop --print-config > ~/.config/undertop/conf
 ```
 
 ```toml
-theme = "amber"          # amber, phosphor, cobalt, lockdown
+theme = "silo"           # silo, amber, phosphor, cobalt, lockdown
+panels = ["cpu", "memory", "thermal", "comms", "vaults", "gpu", "procs"]
 interval_ms = 1000       # 250 to 10000
 crt = true               # CRT emulation
 boot = true              # power-on self test
@@ -97,7 +99,14 @@ voice = true             # robotic voice for announcements (needs espeak-ng, esp
 lockdown_on_heat = true  # see § 7
 ```
 
+`panels` lists the stations to man; the others stay dark and the rest of the console takes their room.
+`panels = ["cpu", "procs"]` makes a compact reactor-and-manifest terminal.
+
 ## § 4. INSTRUMENT PANEL
+
+This terminal sits on level 142, in I.T. Each station carries the plate of the department that answers
+for it: **MCH** Mechanical, **SUP** Supply, **IT**, and **JUD** Judicial, who keeps the manifest and signs
+every termination.
 
 | Code | Station | Reads |
 | --- | --- | --- |
@@ -165,7 +174,8 @@ terminal afterwards. `Ctrl-C` leaves without paperwork; `shift_report = false` s
 
 | Palette | When to use it |
 | --- | --- |
-| **AMBER** | standard issue |
+| **SILO** | standard issue: teal line-art, like the schematic screens on the lower levels |
+| **AMBER** | the old standard issue, still found in many stations |
 | **PHOSPHOR** | for operators who remember the green screens |
 | **COBALT** | night shift |
 | **LOCKDOWN** | when something is wrong, or when you want it to look that way |

@@ -21,7 +21,7 @@ pub struct Theme {
     pub crit: Color,
 }
 
-pub const THEMES: [Theme; 4] = [
+pub const THEMES: [Theme; 5] = [
     Theme {
         name: "AMBER",
         bg: Color::Rgb(16, 10, 3),
@@ -61,6 +61,17 @@ pub const THEMES: [Theme; 4] = [
         bright: Color::Rgb(255, 196, 176),
         warn: Color::Rgb(255, 205, 64),
         crit: Color::Rgb(255, 255, 255),
+    },
+    // teal line-art on near-black, like a silo's schematic screens
+    Theme {
+        name: "SILO",
+        bg: Color::Rgb(3, 14, 13),
+        fg: Color::Rgb(86, 226, 196),
+        dim: Color::Rgb(42, 138, 120),
+        faint: Color::Rgb(14, 54, 48),
+        bright: Color::Rgb(206, 255, 240),
+        warn: Color::Rgb(238, 206, 92),
+        crit: Color::Rgb(255, 92, 72),
     },
 ];
 

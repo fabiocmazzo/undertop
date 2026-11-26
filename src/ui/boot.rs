@@ -40,6 +40,7 @@ pub fn draw(f: &mut Frame, area: Rect, app: &App) {
             format!("HANDSHAKE WITH NODE {}", m.host.to_uppercase()),
             "ACCEPTED".into(),
         ),
+        ("TERMINAL LOCATION".into(), "LEVEL 142 ▸ I.T.".into()),
         ("OPERATOR CLEARANCE".into(), "GRANTED".into()),
     ];
 

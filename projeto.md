@@ -218,6 +218,20 @@ Minimum terminal size is 80x24; it looks best at 160x45 or larger, in a truecolo
     pacman's questions and sudo's password need the terminal. The PKGBUILDs on `main` therefore have to
     follow every release.
 
+24. **Stations are optional** (`panels`, `--panels`). The layout stays fixed: top row CPU and memory,
+    middle row the others, manifest below. A hidden station gives its room to its row, and an empty
+    row gives its room to the others; without the manifest, the top and middle rows split the height
+    3:2. The GPU station joins a full middle row only from 140 columns, as before, and any row with
+    fewer stations.
+25. **More silo, same rule: inspired, not copied.**
+    - **Department plates:** each station has one (MCH, SUP, IT, JUD).
+    - **Scale ticks:** every bottom edge carries scale ticks (minor every 5 columns, major every 10),
+      drawn as a pass over the plain border cells.
+    - **Depth gauge:** the header shows level 142 of 144. The hazard stripes it replaces now appear
+      only while the status is elevated or critical, so they mean something again.
+    - **SILO palette:** teal on near-black, the colors of the schematic screens. It is the default
+      from this version on (chosen by the user over AMBER). Its index is 4, after LOCKDOWN at 3.
+
 ## Ideas for later
 
 - Per-interface network view.

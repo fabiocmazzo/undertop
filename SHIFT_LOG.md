@@ -2,6 +2,18 @@
 
 Changes to the terminal, newest shift first.
 
+## Unreleased
+
+- `panels` in the config (and `--panels`) picks the stations; the others give up their room.
+- SILO palette, teal line-art on near-black, is now the default (`theme = "amber"` brings the old
+  one back).
+- Shift+K opens the termination dialog on terminals that report it as Shift + `k`.
+- The console looks more like a silo terminal: department plates on every station (MCH, SUP, IT,
+  JUD), a drawing's scale on their bottom edges, a depth gauge on level 142 in the header (hazard
+  stripes only when something runs hot), the termination dialog as a judicial order, and new notices
+  on the ticker.
+- The header no longer cuts the task count short on mid-sized terminals.
+
 ## v0.3.1 — Supply Line
 
 - One-line install: `curl -fsSL https://raw.githubusercontent.com/fabiocmazzo/undertop/main/install.sh | sh`.

@@ -12,12 +12,19 @@ use serde::Deserialize;
 
 use crate::theme::THEMES;
 
+/// The default palette: SILO, teal line-art.
+const SILO_THEME: usize = 4;
+
 pub const TEMPLATE: &str = "\
 # undertop configuration
 # Save as ~/.config/undertop/config.toml. Every key is optional.
 
-# amber, phosphor, cobalt or lockdown
-theme = \"amber\"
+# silo, amber, phosphor, cobalt or lockdown
+theme = \"silo\"
+
+# stations on the console, in any order (the layout is fixed):
+# cpu, memory, thermal, comms, vaults, gpu, procs
+panels = [\"cpu\", \"memory\", \"thermal\", \"comms\", \"vaults\", \"gpu\", \"procs\"]
 
 # milliseconds between telemetry samples (250 to 10000)
 interval_ms = 1000
@@ -46,6 +53,7 @@ lockdown_on_heat = true
 #[serde(default, deny_unknown_fields)]
 struct File {
     theme: Option<String>,
+    panels: Option<Vec<String>>,
     interval_ms: Option<u64>,
     crt: Option<bool>,
     boot: Option<bool>,
@@ -58,6 +66,7 @@ struct File {
 #[derive(Debug, Clone)]
 pub struct Settings {
     pub theme_idx: usize,
+    pub panels: Panels,
     pub interval: Duration,
     pub crt: bool,
     pub boot: bool,
@@ -70,7 +79,8 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            theme_idx: 0,
+            theme_idx: SILO_THEME,
+            panels: Panels::default(),
             interval: Duration::from_millis(1000),
             crt: true,
             boot: true,
@@ -79,6 +89,63 @@ impl Default for Settings {
             lockdown_on_heat: true,
             voice: true,
         }
+    }
+}
+
+/// Which stations the console shows. The header and the footer are always there.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Panels {
+    pub cpu: bool,
+    pub memory: bool,
+    pub thermal: bool,
+    pub comms: bool,
+    pub vaults: bool,
+    pub gpu: bool,
+    pub procs: bool,
+}
+
+pub const PANEL_NAMES: [&str; 7] = [
+    "cpu", "memory", "thermal", "comms", "vaults", "gpu", "procs",
+];
+
+impl Default for Panels {
+    fn default() -> Self {
+        Self::parse(PANEL_NAMES).unwrap()
+    }
+}
+
+impl Panels {
+    /// From a list of names, e.g. `["cpu", "procs"]`; anything not listed is hidden.
+    pub fn parse<S: AsRef<str>>(names: impl IntoIterator<Item = S>) -> Result<Self> {
+        let mut p = Self {
+            cpu: false,
+            memory: false,
+            thermal: false,
+            comms: false,
+            vaults: false,
+            gpu: false,
+            procs: false,
+        };
+        for n in names {
+            let n = n.as_ref().trim().to_ascii_lowercase();
+            let slot = match n.as_str() {
+                "cpu" => &mut p.cpu,
+                "memory" | "mem" => &mut p.memory,
+                "thermal" | "temp" => &mut p.thermal,
+                "comms" | "net" => &mut p.comms,
+                "vaults" | "disks" => &mut p.vaults,
+                "gpu" => &mut p.gpu,
+                "procs" | "processes" => &mut p.procs,
+                _ => {
+                    return Err(eyre!(
+                        "unknown panel \"{n}\" (use {})",
+                        PANEL_NAMES.join(", ")
+                    ));
+                }
+            };
+            *slot = true;
+        }
+        Ok(p)
     }
 }
 
@@ -114,6 +181,9 @@ impl Settings {
         let mut s = Self::default();
         if let Some(name) = f.theme {
             s.theme_idx = theme_index(&name).ok_or_else(|| eyre!("unknown theme \"{name}\""))?;
+        }
+        if let Some(names) = f.panels {
+            s.panels = Panels::parse(&names)?;
         }
         if let Some(ms) = f.interval_ms {
             if !(250..=10_000).contains(&ms) {
@@ -153,5 +223,18 @@ mod tests {
         assert!(Settings::parse("interval_ms = 5").is_err());
         assert!(Settings::parse("colour = 1").is_err());
         assert_eq!(Settings::parse("theme = \"COBALT\"").unwrap().theme_idx, 2);
+        assert!(Settings::parse("panels = [\"cpu\", \"radar\"]").is_err());
+    }
+
+    #[test]
+    fn panels_list_what_is_shown() {
+        let s = Settings::parse("panels = [\"CPU\", \"procs\"]").unwrap();
+        assert!(s.panels.cpu && s.panels.procs);
+        assert!(!s.panels.memory && !s.panels.gpu);
+        assert_eq!(
+            Settings::default().panels,
+            Panels::parse(PANEL_NAMES).unwrap()
+        );
+        assert!(!Panels::parse(Vec::<String>::new()).unwrap().cpu);
     }
 }

@@ -74,49 +74,115 @@ fn too_small(f: &mut Frame, area: Rect, t: &Theme) {
 fn console(f: &mut Frame, area: Rect, app: &mut App) {
     let t = app.theme();
     app.hits = crate::app::Hits::default();
+    let p = app.settings.panels;
     let tall = area.height >= 40;
+    let has_top = p.cpu || p.memory;
+    // the GPU station shares the middle row with the others only when there is room for four
+    let gpu = p.gpu && !app.mon.gpu_rows.is_empty();
+    let mut mids: Vec<(u16, Station)> = Vec::new();
+    if p.thermal {
+        mids.push((24, Station::Thermal));
+    }
+    if p.comms {
+        mids.push((30, Station::Comms));
+    }
+    if p.vaults {
+        mids.push((24, Station::Vaults));
+    }
+    if gpu && (mids.len() < 3 || area.width >= 140) {
+        mids.push((22, Station::Gpu));
+    }
+    // with the manifest hidden, the other rows share its height
+    let (top_h, mid_h) = if p.procs {
+        (
+            Constraint::Length(if tall { 14 } else { 11 }),
+            Constraint::Length(if tall { 10 } else { 8 }),
+        )
+    } else {
+        (Constraint::Fill(3), Constraint::Fill(2))
+    };
     let [header, top, mid, procs, footer] = Layout::vertical([
         Constraint::Length(5),
-        Constraint::Length(if tall { 14 } else { 11 }),
-        Constraint::Length(if tall { 10 } else { 8 }),
-        Constraint::Min(5),
+        if has_top {
+            top_h
+        } else {
+            Constraint::Length(0)
+        },
+        if mids.is_empty() {
+            Constraint::Length(0)
+        } else {
+            mid_h
+        },
+        if p.procs {
+            Constraint::Min(5)
+        } else {
+            Constraint::Length(0)
+        },
         Constraint::Length(1),
     ])
     .areas(area);
 
     draw_header(f, header, app);
+    let mut drawn: Vec<Rect> = Vec::new();
 
-    let [cpu, mem] =
-        Layout::horizontal([Constraint::Percentage(62), Constraint::Percentage(38)]).areas(top);
-    draw_cpu(f, cpu, app);
-    draw_memory(f, mem, app);
-
-    // the GPU station only joins the middle row when there is room for four panels
-    if !app.mon.gpu_rows.is_empty() && area.width >= 140 {
-        let [thermal, comms, vaults, gpu] = Layout::horizontal([
-            Constraint::Percentage(24),
-            Constraint::Percentage(30),
-            Constraint::Percentage(24),
-            Constraint::Percentage(22),
-        ])
-        .areas(mid);
-        draw_thermal(f, thermal, app);
-        draw_comms(f, comms, app);
-        draw_vaults(f, vaults, app);
-        draw_gpu(f, gpu, app);
-    } else {
-        let [thermal, comms, vaults] = Layout::horizontal([
-            Constraint::Percentage(30),
-            Constraint::Percentage(40),
-            Constraint::Percentage(30),
-        ])
-        .areas(mid);
-        draw_thermal(f, thermal, app);
-        draw_comms(f, comms, app);
-        draw_vaults(f, vaults, app);
+    match (p.cpu, p.memory) {
+        (true, true) => {
+            let [cpu, mem] =
+                Layout::horizontal([Constraint::Percentage(62), Constraint::Percentage(38)])
+                    .areas(top);
+            draw_cpu(f, cpu, app);
+            draw_memory(f, mem, app);
+            drawn.extend([cpu, mem]);
+        }
+        (true, false) => {
+            draw_cpu(f, top, app);
+            drawn.push(top);
+        }
+        (false, true) => {
+            draw_memory(f, top, app);
+            drawn.push(top);
+        }
+        _ => {}
     }
-
-    draw_procs(f, procs, app);
+    let cells = Layout::horizontal(mids.iter().map(|(w, _)| Constraint::Fill(*w))).split(mid);
+    for ((_, station), r) in mids.iter().zip(cells.iter()) {
+        match station {
+            Station::Thermal => draw_thermal(f, *r, app),
+            Station::Comms => draw_comms(f, *r, app),
+            Station::Vaults => draw_vaults(f, *r, app),
+            Station::Gpu => draw_gpu(f, *r, app),
+        }
+        drawn.push(*r);
+    }
+    if p.procs {
+        draw_procs(f, procs, app);
+        drawn.push(procs);
+    }
+    if !has_top && mids.is_empty() && !p.procs {
+        let msg = Paragraph::new(vec![
+            Line::styled(
+                "ALL STATIONS DARK",
+                Style::new().fg(t.warn).add_modifier(Modifier::BOLD),
+            ),
+            Line::styled(
+                "panels = [] in the config leaves nothing to watch",
+                Style::new().fg(t.dim),
+            ),
+        ])
+        .centered();
+        let [m] = Layout::vertical([Constraint::Length(2)])
+            .flex(Flex::Center)
+            .areas(Rect {
+                y: header.bottom(),
+                height: footer.y - header.bottom(),
+                ..area
+            });
+        f.render_widget(msg, m);
+    }
+    // a technical drawing's scale along the bottom of every station, and of the header
+    for r in drawn.iter().chain([&header]) {
+        rule_ticks(f, *r, &t);
+    }
     draw_footer(f, footer, app);
 
     if app.show_help {
@@ -130,6 +196,40 @@ fn console(f: &mut Frame, area: Rect, app: &mut App) {
     }
     if app.lockdown.is_some() {
         overlays::lockdown(f, area, app);
+    }
+}
+
+#[derive(Clone, Copy)]
+enum Station {
+    Thermal,
+    Comms,
+    Vaults,
+    Gpu,
+}
+
+/// Scale marks on the bottom edge of `r` (a panel or a row of panels), as on a drawing: a minor
+/// tick every 5 columns, a major one every 10. Only plain border cells are touched.
+fn rule_ticks(f: &mut Frame, r: Rect, t: &Theme) {
+    if r.height < 2 || r.width < 4 {
+        return;
+    }
+    let y = r.bottom() - 1;
+    let buf = f.buffer_mut();
+    for x in r.x + 1..r.right() - 1 {
+        let i = x - r.x;
+        let Some(c) = buf.cell_mut((x, y)) else {
+            continue;
+        };
+        let (minor, major) = match c.symbol() {
+            "━" => ("┷", "┻"),
+            "═" => ("╧", "╩"),
+            _ => continue,
+        };
+        if i.is_multiple_of(10) {
+            c.set_symbol(major).set_fg(t.fg);
+        } else if i.is_multiple_of(5) {
+            c.set_symbol(minor);
+        }
     }
 }
 
@@ -147,6 +247,14 @@ fn draw_header(f: &mut Frame, area: Rect, app: &App) {
             Span::styled(
                 "SUBTERRANEAN OPERATIONS TERMINAL",
                 Style::new().fg(t.bright).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                if area.width >= 110 {
+                    " ▸ LEVEL 142 ▸ I.T. DEPARTMENT"
+                } else {
+                    ""
+                },
+                Style::new().fg(t.dim),
             ),
             Span::styled(" ╞", Style::new().fg(t.fg)),
         ]))
@@ -179,29 +287,11 @@ fn draw_header(f: &mut Frame, area: Rect, app: &App) {
     } else {
         big_text_width(&time, 1) + 4
     };
-    let [logo, info, stripes, clk] = Layout::horizontal([
-        Constraint::Length(logo_w + 2),
-        Constraint::Min(30),
-        Constraint::Max(18),
-        Constraint::Length(clock_w),
-    ])
-    .areas(inner);
-
-    big_text(
-        f.buffer_mut(),
-        logo.x + 1,
-        logo.y,
-        "UNDERTOP",
-        logo_scale,
-        t.bright,
-        t.warn,
-        logo,
-    );
 
     let k = Style::new().fg(t.dim);
     let v = Style::new().fg(t.bright);
     let sep = Span::styled(" ░ ", Style::new().fg(t.faint));
-    let lines = vec![
+    let lines: Vec<Line> = vec![
         Line::from(vec![
             Span::styled("NODE ", k),
             Span::styled(m.host.to_uppercase(), v.add_modifier(Modifier::BOLD)),
@@ -230,18 +320,42 @@ fn draw_header(f: &mut Frame, area: Rect, app: &App) {
             status_span(app),
         ]),
     ];
+    // the information keeps its full width; the gauge takes what is left, up to 20 columns
+    let info_w = lines.iter().map(|l| l.width() as u16).max().unwrap_or(0) + 3;
+    let spare = inner.width.saturating_sub(logo_w + 2 + clock_w + info_w);
+    let [logo, info, gauge, clk] = Layout::horizontal([
+        Constraint::Length(logo_w + 2),
+        Constraint::Fill(1),
+        Constraint::Length(spare.min(20)),
+        Constraint::Length(clock_w),
+    ])
+    .areas(inner);
+    big_text(
+        f.buffer_mut(),
+        logo.x + 1,
+        logo.y,
+        "UNDERTOP",
+        logo_scale,
+        t.bright,
+        t.warn,
+        logo,
+    );
     f.render_widget(Paragraph::new(lines), info.inner(Margin::new(1, 0)));
 
-    // hazard stripes, scrolling slowly
-    let buf = f.buffer_mut();
-    for y in stripes.y..stripes.bottom() {
-        for x in stripes.x..stripes.right() {
-            let on = ((x as u64 + y as u64 + app.frame / 3) % 4) < 2;
-            if let Some(c) = buf.cell_mut((x, y)) {
-                c.set_symbol(if on { "▚" } else { " " })
-                    .set_fg(lerp(t.bg, t.warn, 0.55));
+    if status_level(app) > 0 {
+        // hazard stripes, scrolling slowly, while something runs hot
+        let buf = f.buffer_mut();
+        for y in gauge.y..gauge.bottom() {
+            for x in gauge.x..gauge.right() {
+                let on = ((x as u64 + y as u64 + app.frame / 3) % 4) < 2;
+                if let Some(c) = buf.cell_mut((x, y)) {
+                    c.set_symbol(if on { "▚" } else { " " })
+                        .set_fg(lerp(t.bg, t.warn, 0.55));
+                }
             }
         }
+    } else {
+        depth_gauge(f, gauge, app, &t);
     }
 
     if !narrow {
@@ -264,6 +378,46 @@ fn draw_header(f: &mut Frame, area: Rect, app: &App) {
     }
 }
 
+/// Where this terminal sits: a scale of the silo's 144 levels with a mark on level 142.
+fn depth_gauge(f: &mut Frame, r: Rect, app: &App, t: &Theme) {
+    if r.width < 10 || r.height < 3 {
+        return;
+    }
+    let w = r.width as usize - 1;
+    let buf = f.buffer_mut();
+    buf.set_string(
+        r.x,
+        r.y,
+        fit(
+            match w {
+                18.. => "DEPTH ▸ LEVEL 142",
+                12.. => "DEPTH ▸ L142",
+                _ => "L142",
+            },
+            w,
+        ),
+        Style::new().fg(t.dim),
+    );
+    let mark = (141 * (w - 1)) / 143;
+    let blink = (app.frame / 5).is_multiple_of(2);
+    for i in 0..w {
+        let (sym, st) = if i == mark {
+            ("◆", Style::new().fg(if blink { t.warn } else { t.bright }))
+        } else if i == 0 {
+            ("┠", Style::new().fg(t.fg))
+        } else if i == w - 1 {
+            ("┨", Style::new().fg(t.fg))
+        } else if i % 4 == 0 {
+            ("┼", Style::new().fg(t.dim))
+        } else {
+            ("─", Style::new().fg(t.faint))
+        };
+        buf.set_string(r.x + i as u16, r.y + 1, sym, st);
+    }
+    let ends = format!("{:<width$}144", "001", width = w.saturating_sub(3));
+    buf.set_string(r.x, r.y + 2, ends, Style::new().fg(t.faint));
+}
+
 fn shift_name(hour: u32) -> String {
     match hour {
         6..=13 => "FIRST (DAY)".into(),
@@ -272,8 +426,8 @@ fn shift_name(hour: u32) -> String {
     }
 }
 
-fn status_span(app: &App) -> Span<'static> {
-    let t = app.theme();
+/// 0 nominal, 1 elevated, 2 critical.
+fn status_level(app: &App) -> u8 {
     let cpu = app.mon.cpu_total.last();
     let hot = app
         .mon
@@ -281,14 +435,25 @@ fn status_span(app: &App) -> Span<'static> {
         .first()
         .map(|s| s.temp / s.crit)
         .unwrap_or(0.0);
+    if cpu > 90.0 || hot > 0.9 {
+        2
+    } else if cpu > 65.0 || hot > 0.75 {
+        1
+    } else {
+        0
+    }
+}
+
+fn status_span(app: &App) -> Span<'static> {
+    let t = app.theme();
     let (txt, c) = if app.paused {
         ("TELEMETRY FROZEN", t.warn)
-    } else if cpu > 90.0 || hot > 0.9 {
-        ("▲ CRITICAL LOAD ▲", t.crit)
-    } else if cpu > 65.0 || hot > 0.75 {
-        ("ELEVATED", t.warn)
     } else {
-        ("ALL SYSTEMS NOMINAL", t.fg)
+        match status_level(app) {
+            2 => ("▲ CRITICAL LOAD ▲", t.crit),
+            1 => ("ELEVATED", t.warn),
+            _ => ("ALL SYSTEMS NOMINAL", t.fg),
+        }
     };
     let blink = c != t.fg && (app.frame / 4).is_multiple_of(2);
     Span::styled(
@@ -309,7 +474,7 @@ fn draw_cpu(f: &mut Frame, area: Rect, app: &App) {
     let block = panel(
         &t,
         area.width,
-        "01",
+        "MCH·01",
         "REACTOR CORE",
         format!("{} ▸ {} CORES", short_brand(&m.cpu_brand), m.core_count()),
         total > 50.0 && (app.frame / 5).is_multiple_of(2),
@@ -409,7 +574,7 @@ fn draw_memory(f: &mut Frame, area: Rect, app: &App) {
     let block = panel(
         &t,
         area.width,
-        "02",
+        "SUP·02",
         "RESERVOIR",
         format!("{} TOTAL", fmt_bytes(m.mem_total as f64)),
         frac > 0.85,
@@ -499,7 +664,7 @@ fn draw_thermal(f: &mut Frame, area: Rect, app: &App) {
     let block = panel(
         &t,
         area.width,
-        "03",
+        "MCH·03",
         "THERMAL",
         format!("MAX {hottest:.0}°C"),
         hottest > 80.0,
@@ -547,7 +712,7 @@ fn draw_comms(f: &mut Frame, area: Rect, app: &App) {
     let block = panel(
         &t,
         area.width,
-        "04",
+        "IT·04",
         "COMMS",
         format!(
             "Σ▼ {}  Σ▲ {}",
@@ -664,7 +829,7 @@ fn draw_vaults(f: &mut Frame, area: Rect, app: &App) {
     let block = panel(
         &t,
         area.width,
-        "05",
+        "SUP·05",
         "VAULTS",
         format!(
             "▼R {}/s ▲W {}/s",
@@ -757,7 +922,7 @@ fn draw_gpu(f: &mut Frame, area: Rect, app: &App) {
     let block = panel(
         &t,
         area.width,
-        "07",
+        "MCH·07",
         "AUX REACTOR",
         format!("{} UNITS", gpus.len()),
         busy,
@@ -867,7 +1032,7 @@ fn draw_procs(f: &mut Frame, area: Rect, app: &mut App) {
     let block = panel(
         &t,
         area.width,
-        "06",
+        "JUD·06",
         if app.tree { "LINEAGE" } else { "MANIFEST" },
         format!(
             "{filter}SORT ▸ {}{arrow} ░ {} ENTRIES",
@@ -1016,6 +1181,11 @@ const TICKER: &[&str] = &[
     "LEVEL 142 ▸ PRESSURE SEALS HOLDING",
     "IN CASE OF CONTAINMENT BREACH, DO NOT PRESS !",
     "SCHEMATICS OF LEVEL 142 ARE RESTRICTED. DO NOT ENTER THE LEVEL NUMBER",
+    "THE STAIR IS FOR WALKING, NOT FOR LOITERING",
+    "ALL ARTIFACTS FROM BEFORE MUST BE SURRENDERED TO JUDICIAL",
+    "MECHANICAL REMINDS ALL LEVELS: THE GENERATOR HEARS EVERYTHING",
+    "I.T. IS ALWAYS WATCHING. THAT IS WHAT I.T. IS FOR",
+    "DO NOT SPEAK OF WHAT IS OUTSIDE",
 ];
 
 fn draw_footer(f: &mut Frame, area: Rect, app: &mut App) {
@@ -1154,7 +1324,7 @@ fn draw_kill(f: &mut Frame, area: Rect, app: &App) {
         .style(Style::new().bg(t.bg))
         .title(
             Line::styled(
-                " ▲ AUTHORIZATION REQUIRED ▲ ",
+                " ▲ JUDICIAL ORDER ▸ AUTHORIZATION REQUIRED ▲ ",
                 Style::new().fg(t.bg).bg(edge).add_modifier(Modifier::BOLD),
             )
             .centered(),
@@ -1300,6 +1470,30 @@ mod tests {
                     .is_some_and(|v| v == *name || v == n.to_string())
                 {
                     println!("--- {name} {w}x{h}\n{}", dump(&term, w, h));
+                }
+            }
+        }
+    }
+
+    /// Any choice of stations, including none, at any size.
+    #[test]
+    fn renders_every_panel_choice() {
+        use crate::config::{PANEL_NAMES, Panels};
+        let mut app = test_app();
+        let mut choices: Vec<Vec<&str>> = vec![vec![], PANEL_NAMES.to_vec()];
+        for n in PANEL_NAMES {
+            choices.push(vec![n]);
+            choices.push(PANEL_NAMES.iter().copied().filter(|m| *m != n).collect());
+        }
+        choices.push(vec!["cpu", "procs"]);
+        choices.push(vec!["thermal", "comms"]);
+        for names in choices {
+            app.settings.panels = Panels::parse(&names).unwrap();
+            for (w, h) in [(80, 24), (160, 45), (100, 30)] {
+                let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
+                term.draw(|f| super::draw(f, &mut app)).unwrap();
+                if std::env::var("UNDERTOP_DUMP").as_deref() == Ok("panels") && w == 100 {
+                    println!("--- {names:?}\n{}", dump(&term, w, h));
                 }
             }
         }

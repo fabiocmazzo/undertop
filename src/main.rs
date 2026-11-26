@@ -26,7 +26,9 @@ USAGE: undertop [OPTIONS]
 
 OPTIONS:
   --no-boot          skip the power-on self test
-  --theme <name>     amber, phosphor, cobalt or lockdown
+  --theme <name>     amber, phosphor, cobalt, lockdown or silo
+  --panels <list>    stations to show, e.g. cpu,memory,procs
+                     (cpu, memory, thermal, comms, vaults, gpu, procs)
   --config <path>    read this config file instead of ~/.config/undertop/config.toml
   --print-config     print a config template with the defaults, then exit
   -h, --help         this text
@@ -55,8 +57,8 @@ fn main() -> Result<()> {
     };
     if let Some(bad) = args.iter().enumerate().find(|(i, a)| {
         a.starts_with('-')
-            && !["--no-boot", "--theme", "--config"].contains(&a.as_str())
-            && !(*i > 0 && ["--theme", "--config"].contains(&args[i - 1].as_str()))
+            && !["--no-boot", "--theme", "--config", "--panels"].contains(&a.as_str())
+            && !(*i > 0 && ["--theme", "--config", "--panels"].contains(&args[i - 1].as_str()))
     }) {
         return Err(eyre!("unknown option {}\n\n{USAGE}", bad.1));
     }
@@ -74,6 +76,11 @@ fn main() -> Result<()> {
     if let Some(name) = value("--theme")? {
         settings.theme_idx =
             config::theme_index(name).ok_or_else(|| eyre!("unknown theme: {name}\n\n{USAGE}"))?;
+    }
+
+    if let Some(list) = value("--panels")? {
+        settings.panels =
+            config::Panels::parse(list.split(',')).map_err(|e| eyre!("{e}\n\n{USAGE}"))?;
     }
 
     let mut app = app::App::new(settings)?;

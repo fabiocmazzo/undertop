@@ -578,6 +578,16 @@ impl App {
     }
 
     fn on_key(&mut self, key: KeyEvent) {
+        // Some terminals (kitty's keyboard protocol and others) send Shift+K as 'k' with SHIFT
+        // instead of 'K'; every binding here means the character, so make it one.
+        let key = match key.code {
+            KeyCode::Char(c)
+                if c.is_ascii_lowercase() && key.modifiers.contains(KeyModifiers::SHIFT) =>
+            {
+                KeyEvent::new(KeyCode::Char(c.to_ascii_uppercase()), key.modifiers)
+            }
+            _ => key,
+        };
         if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
             self.quit = true;
             return;
@@ -976,6 +986,24 @@ mod tests {
                 app.on_key(KeyEvent::from(KeyCode::Char(c)));
             }
             assert!(app.schematic.is_none());
+        }
+
+        #[test]
+        fn shift_k_opens_termination_however_the_terminal_spells_it() {
+            for key in [
+                KeyEvent::from(KeyCode::Char('K')),
+                KeyEvent::new(KeyCode::Char('K'), KeyModifiers::SHIFT),
+                KeyEvent::new(KeyCode::Char('k'), KeyModifiers::SHIFT),
+            ] {
+                let (mut app, _term) = drawn_app();
+                app.on_key(key);
+                assert!(app.kill.is_some(), "{key:?}");
+            }
+            let (mut app, _term) = drawn_app();
+            app.on_key(KeyEvent::from(KeyCode::Down));
+            app.on_key(KeyEvent::from(KeyCode::Char('k')));
+            assert!(app.kill.is_none());
+            assert_eq!(app.table.selected(), Some(0));
         }
 
         #[test]
