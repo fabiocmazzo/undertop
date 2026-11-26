@@ -8,7 +8,7 @@
 
 [![MAINFRAME INTEGRITY](https://github.com/fabiocmazzo/undertop/actions/workflows/ci.yml/badge.svg)](https://github.com/fabiocmazzo/undertop/actions/workflows/ci.yml)
 
-![undertop: boot sequence, palettes, process manifest and termination dialog](assets/undertop.gif)
+![undertop: boot sequence, palettes, a ticker alert, a process dossier, the lineage tree, the termination dialog and a lockdown](assets/undertop.gif)
 
 </div>
 
