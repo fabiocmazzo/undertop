@@ -57,7 +57,27 @@ cargo run --release
 | --- | --- |
 | `--no-boot` | skip the power-on self test |
 | `--theme <amber\|phosphor\|cobalt\|lockdown>` | start with another palette |
+| `--config <path>` | read another config file |
+| `--print-config` | print a config template with every default |
 | `--help` | print usage |
+
+### § 3.1 Standing orders (config file)
+
+Defaults live in `~/.config/undertop/config.toml` (or `$XDG_CONFIG_HOME/undertop/config.toml`). Every
+key is optional; flags win over the file.
+
+```sh
+mkdir -p ~/.config/undertop && undertop --print-config > ~/.config/undertop/config.toml
+```
+
+```toml
+theme = "amber"          # amber, phosphor, cobalt, lockdown
+interval_ms = 1000       # 250 to 10000
+crt = true               # CRT emulation
+boot = true              # power-on self test
+power_down = true        # CRT switch-off when leaving
+lockdown_on_heat = true  # see § 7
+```
 
 ## § 4. INSTRUMENT PANEL
 
@@ -68,8 +88,15 @@ cargo run --release
 | 02 | **RESERVOIR** | memory and swap as liquid tanks, free/used figures, the battery as the *aux power cell* |
 | 03 | **THERMAL** | every hwmon sensor against its critical temperature |
 | 04 | **COMMS** | network receive/transmit rates as an oscilloscope |
-| 05 | **VAULTS** | mounted filesystems and how full they are |
+| 05 | **VAULTS** | mounted filesystems, how full they are, disk read/write rates |
 | 06 | **MANIFEST** | every process on the node: operator, load, memory, state, time, command |
+| 07 | **AUX REACTOR** | GPUs: Intel iGPU frequency, NVIDIA load, temperature and VRAM (wide screens only) |
+
+The AUX REACTOR never wakes a sleeping NVIDIA GPU to read it: a laptop dGPU in power saving is shown as
+`◌ DORMANT` and left alone.
+
+The ticker at the bottom carries facility announcements, and alerts when a process holds a full core
+for 5 seconds, takes more than a quarter of the memory, or becomes a zombie.
 
 A lit lamp (`◉`) in a station's title means that station needs attention.
 
@@ -82,6 +109,8 @@ A lit lamp (`◉`) in a station's title means that station needs attention.
 | `c` `m` `p` `n` | sort by CPU / memory / PID / name (press again to reverse) |
 | `s` `Tab`, `r` | next sort key, reverse order |
 | `/` `f` | filter by command, operator or PID (`Enter` keeps it, `Esc` clears it) |
+| `Enter` | open the selected process's dossier |
+| `v` `F5` | lineage view: the manifest as a process tree |
 | `K` `Del` `F9` | request termination of the selected process |
 | `t` | next phosphor palette |
 | `x` | CRT emulation on / off |
@@ -90,7 +119,13 @@ A lit lamp (`◉`) in a station's title means that station needs attention.
 | `?` `h` `F1` | this manual, abridged |
 | `q` `Esc` | leave the terminal |
 
-### § 5.1 Termination of a process
+### § 5.1 Dossiers
+
+`Enter` opens everything the terminal knows about a process: parent and children, start time, threads,
+resident and virtual memory, disk I/O, executable, working directory, control group, and its open files.
+What belongs to other operators is marked **CLASSIFIED**.
+
+### § 5.2 Termination of a process
 
 Termination requires authorization. The terminal will ask you to confirm with `Y` (SIGTERM, the
 courteous way) or `9` (SIGKILL, which is not discussed). Any other key aborts the procedure.
@@ -110,14 +145,20 @@ The display may flicker, roll, or briefly shift a line sideways. This is CRT emu
 **working as intended**. Operators who find it distressing may press `x`. Do not report it to your shift
 supervisor.
 
+If a thermal sensor runs critically hot, the facility will seal itself. Remain at your station. The
+seal lifts on its own, or when you acknowledge it. (`lockdown_on_heat = false` in the config file, for
+operators who prefer to burn quietly.)
+
+There are rumours of a manual override. Management neither confirms nor denies them.
+
 ## § 8. FOR MAINTENANCE PERSONNEL
 
 - Design notes and every decision taken so far: [`projeto.md`](projeto.md).
 - What changed in each version: [`SHIFT_LOG.md`](SHIFT_LOG.md).
 - Releases: push a tag `vX.Y.Z` with a matching `## vX.Y.Z — Name` section in the shift log; the
   release workflow builds the binary and publishes it with that section as notes.
-- `cargo test` renders every screen at several sizes; `UNDERTOP_DUMP=0 cargo test -- --nocapture` prints
-  the console as text (`1` boot, `2` manual, `3` termination dialog).
+- `cargo test` renders every screen at several sizes; `UNDERTOP_DUMP=console cargo test -- --nocapture`
+  prints one as text (`console`, `boot`, `help`, `kill`, `dossier`, `lockdown`, `tree`, `power-down`).
 - The demo above is recorded with [vhs](https://github.com/charmbracelet/vhs) from
   [`demo/undertop.tape`](demo/undertop.tape) (the shrinking step is at the top of that file).
 

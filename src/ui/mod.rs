@@ -2,6 +2,7 @@
 
 mod boot;
 mod effects;
+mod overlays;
 mod widgets;
 
 use chrono::{Local, Timelike};
@@ -38,6 +39,10 @@ pub fn draw(f: &mut Frame, app: &mut App) {
 
     if app.effects {
         effects::apply(f, app);
+    }
+    if let Some(start) = app.shutdown {
+        let p = start.elapsed().as_secs_f64() / crate::app::SHUTDOWN_TIME.as_secs_f64();
+        effects::power_down(f, p.min(1.0), &t);
     }
 }
 
@@ -77,15 +82,30 @@ fn console(f: &mut Frame, area: Rect, app: &mut App) {
     draw_cpu(f, cpu, app);
     draw_memory(f, mem, app);
 
-    let [thermal, comms, vaults] = Layout::horizontal([
-        Constraint::Percentage(30),
-        Constraint::Percentage(40),
-        Constraint::Percentage(30),
-    ])
-    .areas(mid);
-    draw_thermal(f, thermal, app);
-    draw_comms(f, comms, app);
-    draw_vaults(f, vaults, app);
+    // the GPU station only joins the middle row when there is room for four panels
+    if !app.mon.gpu_rows.is_empty() && area.width >= 140 {
+        let [thermal, comms, vaults, gpu] = Layout::horizontal([
+            Constraint::Percentage(24),
+            Constraint::Percentage(30),
+            Constraint::Percentage(24),
+            Constraint::Percentage(22),
+        ])
+        .areas(mid);
+        draw_thermal(f, thermal, app);
+        draw_comms(f, comms, app);
+        draw_vaults(f, vaults, app);
+        draw_gpu(f, gpu, app);
+    } else {
+        let [thermal, comms, vaults] = Layout::horizontal([
+            Constraint::Percentage(30),
+            Constraint::Percentage(40),
+            Constraint::Percentage(30),
+        ])
+        .areas(mid);
+        draw_thermal(f, thermal, app);
+        draw_comms(f, comms, app);
+        draw_vaults(f, vaults, app);
+    }
 
     draw_procs(f, procs, app);
     draw_footer(f, footer, app);
@@ -93,8 +113,14 @@ fn console(f: &mut Frame, area: Rect, app: &mut App) {
     if app.show_help {
         draw_help(f, area, &t);
     }
+    if app.dossier.is_some() {
+        overlays::dossier(f, area, app);
+    }
     if app.kill.is_some() {
         draw_kill(f, area, app);
+    }
+    if app.lockdown.is_some() {
+        overlays::lockdown(f, area, app);
     }
 }
 
@@ -595,8 +621,12 @@ fn draw_vaults(f: &mut Frame, area: Rect, app: &App) {
         area.width,
         "05",
         "VAULTS",
-        format!("{} MOUNTED", m.disks_rows.len()),
-        false,
+        format!(
+            "▼R {}/s ▲W {}/s",
+            fmt_bytes(m.disk_r.last()),
+            fmt_bytes(m.disk_w.last())
+        ),
+        m.disk_r.last() + m.disk_w.last() > 50.0 * 1024.0 * 1024.0,
     );
     let inner = block.inner(area);
     f.render_widget(block, area);
@@ -644,6 +674,134 @@ fn draw_vaults(f: &mut Frame, area: Rect, app: &App) {
         );
         y += 2;
     }
+    // I/O history in the rows left over: reads and writes added, scaled to the peak
+    if inner.bottom() > y + 1 {
+        let r = Rect::new(inner.x, y, inner.width, inner.bottom() - y);
+        let total: Vec<f64> = m
+            .disk_r
+            .tail(r.width as usize)
+            .zip(m.disk_w.tail(r.width as usize))
+            .map(|(a, b)| a + b)
+            .collect();
+        let peak = total.iter().copied().fold(1024.0 * 1024.0, f64::max);
+        let values: Vec<f64> = total.iter().map(|v| v / peak).collect();
+        area_chart(f.buffer_mut(), r, &values, &t, Some(t.dim));
+        let io = format!(
+            "I/O ▼R {}/s ▲W {}/s",
+            fmt_bytes(m.disk_r.last()),
+            fmt_bytes(m.disk_w.last())
+        );
+        f.buffer_mut().set_string(
+            r.x,
+            r.y,
+            fit(&io, r.width as usize),
+            Style::new().fg(t.bright),
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+
+fn draw_gpu(f: &mut Frame, area: Rect, app: &App) {
+    use crate::gpu::GpuState;
+    let t = app.theme();
+    let gpus = &app.mon.gpu_rows;
+    let busy = gpus
+        .iter()
+        .any(|g| g.load.unwrap_or(0.0) > 0.5 && g.state == GpuState::Active);
+    let block = panel(
+        &t,
+        area.width,
+        "07",
+        "AUX REACTOR",
+        format!("{} UNITS", gpus.len()),
+        busy,
+    );
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+    let mut y = inner.y;
+    for g in gpus {
+        if y + 2 > inner.bottom() {
+            break;
+        }
+        let buf = f.buffer_mut();
+        let (tag, tag_style) = match g.state {
+            GpuState::Active => ("ONLINE", Style::new().fg(t.fg)),
+            GpuState::Dormant => ("◌ DORMANT", Style::new().fg(t.faint)),
+            GpuState::Unknown => ("PROBING", Style::new().fg(t.dim)),
+        };
+        let name_w = inner.width.saturating_sub(tag.chars().count() as u16 + 1) as usize;
+        buf.set_string(
+            inner.x,
+            y,
+            fit(&g.name, name_w),
+            Style::new().fg(t.bright).add_modifier(Modifier::BOLD),
+        );
+        buf.set_string(
+            inner.right() - tag.chars().count() as u16,
+            y,
+            tag,
+            tag_style,
+        );
+        let bar = Rect::new(inner.x, y + 1, inner.width.saturating_sub(5), 1);
+        if g.state == GpuState::Dormant {
+            // a slow breathing glow while it sleeps
+            let breath = ((app.frame as f64 * 0.08).sin() + 1.0) / 2.0;
+            let line: String = "▯".repeat(bar.width as usize);
+            buf.set_string(
+                bar.x,
+                bar.y,
+                line,
+                Style::new().fg(lerp(t.bg, t.faint, 0.4 + 0.6 * breath)),
+            );
+            if y + 2 < inner.bottom() {
+                buf.set_string(
+                    inner.x,
+                    y + 2,
+                    fit("ASLEEP ▸ NOT TO BE DISTURBED", inner.width as usize),
+                    Style::new().fg(t.faint),
+                );
+            }
+        } else {
+            let load = g.load.unwrap_or(0.0);
+            seg_bar(buf, bar, load, &t);
+            let pct = g
+                .load
+                .map(|l| format!("{:>3.0}%", l * 100.0))
+                .unwrap_or_else(|| "  ?%".into());
+            buf.set_string(
+                inner.right() - 4,
+                y + 1,
+                pct,
+                Style::new().fg(t.level(load)),
+            );
+            let mut parts = Vec::new();
+            match g.freq_mhz {
+                // 0 MHz: the iGPU is parked in its RC6 power-saving state
+                Some(0) => parts.push("RC6 IDLE".into()),
+                Some(mhz) => parts.push(format!("{:.2} GHz", mhz as f64 / 1000.0)),
+                None => {}
+            }
+            if let Some(c) = g.temp {
+                parts.push(format!("{c:.0}°C"));
+            }
+            if let Some((u, tot)) = g.vram {
+                parts.push(format!("VRAM {u}/{tot} MiB"));
+            }
+            if let Some(age) = g.sampled.map(|s| s.elapsed().as_secs()).filter(|a| *a >= 3) {
+                parts.push(format!("{age}s AGO"));
+            }
+            if y + 2 < inner.bottom() {
+                buf.set_string(
+                    inner.x,
+                    y + 2,
+                    fit(&parts.join(" ▸ "), inner.width as usize),
+                    Style::new().fg(t.dim),
+                );
+            }
+        }
+        y += 4;
+    }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -665,7 +823,7 @@ fn draw_procs(f: &mut Frame, area: Rect, app: &mut App) {
         &t,
         area.width,
         "06",
-        "MANIFEST",
+        if app.tree { "LINEAGE" } else { "MANIFEST" },
         format!(
             "{filter}SORT ▸ {}{arrow} ░ {} ENTRIES",
             app.sort.label(),
@@ -748,7 +906,10 @@ fn draw_procs(f: &mut Frame, area: Rect, app: &mut App) {
                 fmt_duration(p.run_time),
                 Style::new().fg(t.dim),
             )),
-            Cell::from(Span::styled(p.cmd.clone(), Style::new().fg(t.fg))),
+            Cell::from(Line::from(vec![
+                Span::styled(p.tree.clone(), Style::new().fg(t.dim)),
+                Span::styled(p.cmd.clone(), Style::new().fg(t.fg)),
+            ])),
         ])
     });
 
@@ -783,6 +944,7 @@ const TICKER: &[&str] = &[
     "SCHEDULED MAINTENANCE OF THE PAGE CACHE IS NOT YOUR CONCERN",
     "A CLEAN SWAP IS A HAPPY SWAP",
     "LEVEL 142 ▸ PRESSURE SEALS HOLDING",
+    "IN CASE OF CONTAINMENT BREACH, DO NOT PRESS !",
 ];
 
 fn draw_footer(f: &mut Frame, area: Rect, app: &App) {
@@ -790,6 +952,8 @@ fn draw_footer(f: &mut Frame, area: Rect, app: &App) {
     let keys = [
         ("Q", "QUIT"),
         ("?", "HELP"),
+        ("↵", "DOSSIER"),
+        ("V", "TREE"),
         ("T", "PALETTE"),
         ("S", "SORT"),
         ("/", "FILTER"),
@@ -797,7 +961,14 @@ fn draw_footer(f: &mut Frame, area: Rect, app: &App) {
         ("X", "CRT"),
     ];
     let mut spans = Vec::new();
+    let mut used = 0usize;
     for (k, label) in keys {
+        // keep at least 30 columns for the ticker
+        let w = k.chars().count() + label.chars().count() + 4;
+        if used + w + 32 > area.width as usize && used > 0 {
+            break;
+        }
+        used += w;
         spans.push(Span::styled(
             format!(" {k} "),
             Style::new().fg(t.bg).bg(t.dim).add_modifier(Modifier::BOLD),
@@ -812,6 +983,16 @@ fn draw_footer(f: &mut Frame, area: Rect, app: &App) {
             fit(&format!("▶ {s}"), rest),
             Style::new().fg(t.bright).add_modifier(Modifier::BOLD),
         )
+    } else if let Some((a, _)) = &app.alert {
+        let lamp = if (app.frame / 4).is_multiple_of(2) {
+            "▲"
+        } else {
+            " "
+        };
+        Span::styled(
+            fit(&format!("{lamp} ALERT ▸ {a}"), rest),
+            Style::new().fg(t.warn).add_modifier(Modifier::BOLD),
+        )
     } else {
         let tape: String = TICKER.iter().map(|s| format!("{s}   ◆   ")).collect();
         let chars: Vec<char> = tape.chars().collect();
@@ -824,7 +1005,7 @@ fn draw_footer(f: &mut Frame, area: Rect, app: &App) {
     f.render_widget(Paragraph::new(Line::from(spans)), area);
 }
 
-fn popup(area: Rect, w: u16, h: u16) -> Rect {
+pub(crate) fn popup(area: Rect, w: u16, h: u16) -> Rect {
     let [v] = Layout::vertical([Constraint::Length(h)])
         .flex(Flex::Center)
         .areas(area);
@@ -835,7 +1016,7 @@ fn popup(area: Rect, w: u16, h: u16) -> Rect {
 }
 
 fn draw_help(f: &mut Frame, area: Rect, t: &Theme) {
-    let r = popup(area, 62, 20);
+    let r = popup(area, 62, 22);
     f.render_widget(Clear, r);
     let block = Block::default()
         .borders(Borders::ALL)
@@ -865,6 +1046,8 @@ fn draw_help(f: &mut Frame, area: Rect, t: &Theme) {
         entry("s  Tab", "next sort key"),
         entry("r", "reverse sort order"),
         entry("/  f", "filter (Enter keeps, Esc clears)"),
+        entry("Enter", "open the dossier of the selected process"),
+        entry("v  F5", "tree view (lineage) on / off"),
         entry("K  Del", "terminate the selected process"),
         entry("t", "next phosphor palette"),
         entry("x", "CRT emulation on / off"),
@@ -955,42 +1138,96 @@ fn draw_kill(f: &mut Frame, area: Rect, app: &App) {
 
 #[cfg(test)]
 mod tests {
+    use std::time::{Duration, Instant};
+
     use ratatui::{Terminal, backend::TestBackend};
 
-    use crate::app::App;
+    use crate::app::{App, KillPrompt};
+    use crate::config::Settings;
+
+    const SCREENS: [&str; 8] = [
+        "console",
+        "boot",
+        "help",
+        "kill",
+        "dossier",
+        "lockdown",
+        "tree",
+        "power-down",
+    ];
+
+    fn test_app() -> App {
+        App::new(Settings {
+            boot: false,
+            ..Settings::default()
+        })
+        .unwrap()
+    }
+
+    /// Puts the app on screen `n` of `SCREENS`.
+    fn set_screen(app: &mut App, n: usize) {
+        app.booting = n == 1;
+        app.show_help = n == 2;
+        app.kill = (n == 3).then(|| KillPrompt {
+            pid: 1,
+            name: "init".into(),
+        });
+        let me = std::process::id();
+        app.dossier = (n == 4).then(|| (me, app.mon.dossier(me)));
+        app.lockdown = None;
+        if n == 5 {
+            app.start_lockdown("TEST ▸ DRILL".into());
+        }
+        app.tree = n == 6;
+        app.rebuild();
+        app.shutdown = (n == 7).then(|| Instant::now() - Duration::from_millis(300));
+    }
+
+    fn dump(term: &Terminal<TestBackend>, w: u16, h: u16) -> String {
+        let buf = term.backend().buffer();
+        let mut out = String::new();
+        for y in 0..h {
+            for x in 0..w {
+                out.push_str(buf[(x, y)].symbol());
+            }
+            out.push('\n');
+        }
+        out
+    }
 
     /// Renders every screen at a few sizes; fails on panics (out-of-range drawing, etc.).
-    /// `UNDERTOP_DUMP=<0..3> cargo test -- --nocapture` prints that screen (console, boot, help, kill).
+    /// `UNDERTOP_DUMP=<screen> cargo test -- --nocapture` prints a screen, by name or number
+    /// (console, boot, help, kill, dossier, lockdown, tree, power-down).
     #[test]
     fn renders_at_many_sizes() {
-        let mut app = App::new(false).unwrap();
+        let mut app = test_app();
         app.effects = false;
+        let wanted = std::env::var("UNDERTOP_DUMP").ok();
         for (w, h) in [(80, 24), (120, 36), (160, 45), (240, 60), (60, 20)] {
-            for screen in 0..4 {
-                app.booting = screen == 1;
-                app.show_help = screen == 2;
-                app.kill = (screen == 3).then(|| crate::app::KillPrompt {
-                    pid: 1,
-                    name: "init".into(),
-                });
+            for (n, name) in SCREENS.iter().enumerate() {
+                set_screen(&mut app, n);
                 let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
                 term.draw(|f| super::draw(f, &mut app)).unwrap();
-                if std::env::var("UNDERTOP_DUMP").is_ok_and(|v| v == screen.to_string()) {
-                    let buf = term.backend().buffer();
-                    let mut out = String::new();
-                    for y in 0..h {
-                        for x in 0..w {
-                            out.push_str(buf[(x, y)].symbol());
-                        }
-                        out.push('\n');
-                    }
-                    println!("--- {w}x{h}\n{out}");
+                if wanted
+                    .as_deref()
+                    .is_some_and(|v| v == *name || v == n.to_string())
+                {
+                    println!("--- {name} {w}x{h}\n{}", dump(&term, w, h));
                 }
             }
         }
-        app.effects = true;
+    }
+
+    /// The power-down animation and the CRT pass at every stage of their timing.
+    #[test]
+    fn animations_never_draw_out_of_bounds() {
+        let mut app = test_app();
         let mut term = Terminal::new(TestBackend::new(120, 36)).unwrap();
         for _ in 0..50 {
+            term.draw(|f| super::draw(f, &mut app)).unwrap();
+        }
+        for ms in (0..=950).step_by(50) {
+            app.shutdown = Some(Instant::now() - Duration::from_millis(ms));
             term.draw(|f| super::draw(f, &mut app)).unwrap();
         }
     }

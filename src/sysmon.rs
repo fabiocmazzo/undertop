@@ -1,16 +1,22 @@
 //! Telemetry collection: wraps `sysinfo` and keeps short histories for the charts.
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use color_eyre::Result;
 use sysinfo::{
     Components, Disks, Networks, Pid, ProcessStatus, ProcessesToUpdate, Signal, System, Users,
 };
 
+use crate::gpu::{GpuRow, Gpus};
+
 /// Samples kept per history (one per refresh).
 pub const HISTORY: usize = 300;
+/// How long a process must hold (nearly) a full core before the ticker reports it.
+const HOG_TIME: Duration = Duration::from_secs(5);
+/// "Nearly a full core": a busy single-threaded process reads 98-102 %, so 100 would be flaky.
+const HOG_CPU: f32 = 90.0;
 
 #[derive(Debug, Clone)]
 pub struct History {
@@ -51,6 +57,9 @@ impl History {
 #[derive(Debug, Clone)]
 pub struct ProcRow {
     pub pid: u32,
+    pub ppid: Option<u32>,
+    /// Branch drawing in tree view (`├─ `), empty otherwise.
+    pub tree: String,
     pub name: String,
     pub cmd: String,
     pub user: String,
@@ -86,8 +95,18 @@ pub struct Monitor {
     disks: Disks,
     components: Components,
     users: Users,
-    last_net: Instant,
+    gpus: Gpus,
+    last_refresh: Instant,
     refreshes: u64,
+    last_diskstats: Option<(u64, u64)>,
+    /// PIDs holding a full core: since when, and whether it was reported.
+    hogs: HashMap<u32, (Instant, bool)>,
+    /// (pid, kind) already reported, so each alert is said once.
+    reported: HashSet<(u32, u8)>,
+    /// Seconds covered by the last refresh.
+    pub dt: f64,
+    /// Ticker alerts produced by the last refresh; the app drains them.
+    pub alerts: Vec<String>,
 
     pub cpu_total: History,
     pub cpu_cores: Vec<History>,
@@ -97,6 +116,10 @@ pub struct Monitor {
     pub tx: History,
     pub rx_total: u64,
     pub tx_total: u64,
+    /// Disk read / write bytes per second (whole devices).
+    pub disk_r: History,
+    pub disk_w: History,
+    pub gpu_rows: Vec<GpuRow>,
 
     pub mem_total: u64,
     pub mem_used: u64,
@@ -132,8 +155,17 @@ impl Monitor {
             disks: Disks::new_with_refreshed_list()?,
             components: Components::new_with_refreshed_list()?,
             users: Users::new_with_refreshed_list()?,
-            last_net: Instant::now(),
+            gpus: Gpus::detect(),
+            last_refresh: Instant::now(),
             refreshes: 0,
+            last_diskstats: None,
+            hogs: HashMap::new(),
+            reported: HashSet::new(),
+            dt: 1.0,
+            alerts: Vec::new(),
+            disk_r: History::new(),
+            disk_w: History::new(),
+            gpu_rows: Vec::new(),
             cpu_total: History::new(),
             cpu_cores: (0..cores).map(|_| History::new()).collect(),
             avg_freq: 0,
@@ -163,6 +195,8 @@ impl Monitor {
 
     pub fn refresh(&mut self) {
         self.refreshes += 1;
+        self.dt = self.last_refresh.elapsed().as_secs_f64().max(0.001);
+        self.last_refresh = Instant::now();
         self.sys.refresh_cpu_all();
         self.sys.refresh_memory();
         self.sys.refresh_processes(ProcessesToUpdate::All, true);
@@ -192,8 +226,7 @@ impl Monitor {
 
         // Network: `received()` is the amount since the previous refresh.
         self.networks.refresh(true);
-        let secs = self.last_net.elapsed().as_secs_f64().max(0.001);
-        self.last_net = Instant::now();
+        let secs = self.dt;
         let (mut rx, mut tx) = (0u64, 0u64);
         let (mut rx_t, mut tx_t) = (0u64, 0u64);
         for (name, data) in self.networks.iter() {
@@ -282,6 +315,8 @@ impl Monitor {
                 let name = p.name().to_string_lossy().to_string();
                 ProcRow {
                     pid: p.pid().as_u32(),
+                    ppid: p.parent().map(|pp| pp.as_u32()),
+                    tree: String::new(),
                     cmd: if cmd.is_empty() {
                         format!("[{name}]")
                     } else {
@@ -308,6 +343,126 @@ impl Monitor {
         });
         self.load = (la.one, la.five, la.fifteen);
         self.uptime = System::uptime().unwrap_or(0);
+
+        // Disk I/O
+        if let Some((r, w)) = read_diskstats() {
+            if let Some((pr, pw)) = self.last_diskstats {
+                self.disk_r.push(r.saturating_sub(pr) as f64 / secs);
+                self.disk_w.push(w.saturating_sub(pw) as f64 / secs);
+            }
+            self.last_diskstats = Some((r, w));
+        }
+
+        self.gpu_rows = self.gpus.read();
+        self.watch_for_alerts();
+    }
+
+    /// Fills `alerts` with things the ticker should announce: hogs, leaks and zombies.
+    fn watch_for_alerts(&mut self) {
+        const DRAIN: u8 = 1;
+        const ZOMBIE: u8 = 2;
+        let now = Instant::now();
+        let mut hot = HashSet::new();
+        let mut present = HashSet::new();
+        for p in &self.procs {
+            present.insert(p.pid);
+            if p.cpu >= HOG_CPU {
+                hot.insert(p.pid);
+                let entry = self.hogs.entry(p.pid).or_insert((now, false));
+                if !entry.1 && entry.0.elapsed() >= HOG_TIME {
+                    entry.1 = true;
+                    self.alerts.push(format!(
+                        "PID {} ({}) EXCEEDING ALLOCATION ▸ {:.0}% CPU",
+                        p.pid,
+                        p.name.to_uppercase(),
+                        p.cpu
+                    ));
+                }
+            }
+            if self.mem_total > 0
+                && p.mem > self.mem_total / 4
+                && self.reported.insert((p.pid, DRAIN))
+            {
+                self.alerts.push(format!(
+                    "PID {} ({}) IS DRAINING THE RESERVOIR ▸ {}",
+                    p.pid,
+                    p.name.to_uppercase(),
+                    fmt_bytes(p.mem as f64)
+                ));
+            }
+            if p.status == "ZMB" && self.reported.insert((p.pid, ZOMBIE)) {
+                self.alerts.push(format!(
+                    "PID {} ({}) HAS DIED BUT WILL NOT LEAVE ▸ NOTIFY SANITATION",
+                    p.pid,
+                    p.name.to_uppercase()
+                ));
+            }
+        }
+        self.hogs.retain(|pid, _| hot.contains(pid));
+        self.reported.retain(|(pid, _)| present.contains(pid));
+    }
+
+    /// Everything known about one process, for the dossier overlay.
+    pub fn dossier(&self, pid: u32) -> Option<Dossier> {
+        let p = self.sys.process(Pid::from_u32(pid))?;
+        let row = self.procs.iter().find(|r| r.pid == pid)?;
+        let proc_dir = format!("/proc/{pid}");
+        let link = |name: &str| {
+            fs::read_link(format!("{proc_dir}/{name}"))
+                .ok()
+                .map(|p| p.to_string_lossy().to_string())
+        };
+        let threads = fs::read_to_string(format!("{proc_dir}/status"))
+            .ok()
+            .and_then(|s| {
+                s.lines()
+                    .find(|l| l.starts_with("Threads:"))
+                    .and_then(|l| l.split_whitespace().nth(1)?.parse().ok())
+            });
+        let cgroup = fs::read_to_string(format!("{proc_dir}/cgroup"))
+            .ok()
+            .and_then(|s| {
+                s.lines()
+                    .next()
+                    .map(|l| l.splitn(3, ':').nth(2).unwrap_or(l).to_string())
+            });
+        let fds = fs::read_dir(format!("{proc_dir}/fd")).ok().map(|dir| {
+            let mut targets: Vec<String> = dir
+                .flatten()
+                .filter_map(|e| fs::read_link(e.path()).ok())
+                .map(|t| t.to_string_lossy().to_string())
+                .collect();
+            let count = targets.len();
+            // files first, then sockets and pipes
+            targets.sort_by_key(|t| (!t.starts_with('/'), t.clone()));
+            targets.dedup();
+            (count, targets)
+        });
+        let parent = row
+            .ppid
+            .and_then(|pp| self.procs.iter().find(|r| r.pid == pp));
+        let mut children: Vec<(u32, String)> = self
+            .procs
+            .iter()
+            .filter(|r| r.ppid == Some(pid))
+            .map(|r| (r.pid, r.name.clone()))
+            .collect();
+        children.sort();
+        let io = p.disk_usage();
+        Some(Dossier {
+            row: row.clone(),
+            parent: parent.map(|r| (r.pid, r.name.clone())),
+            started: p.start_time(),
+            vmem: p.virtual_memory(),
+            threads,
+            exe: link("exe"),
+            cwd: link("cwd"),
+            cgroup,
+            fds,
+            read_rate: io.read_bytes as f64 / self.dt,
+            write_rate: io.written_bytes as f64 / self.dt,
+            children,
+        })
     }
 
     pub fn core_count(&self) -> usize {
@@ -319,6 +474,56 @@ impl Monitor {
         let sig = if force { Signal::Kill } else { Signal::Term };
         self.sys.process(Pid::from_u32(pid))?.kill_with(sig)
     }
+}
+
+/// What the dossier shows. `None` fields could not be read: usually a process of another user.
+#[derive(Debug, Clone)]
+pub struct Dossier {
+    pub row: ProcRow,
+    pub parent: Option<(u32, String)>,
+    /// Unix time.
+    pub started: u64,
+    pub vmem: u64,
+    pub threads: Option<u32>,
+    pub exe: Option<String>,
+    pub cwd: Option<String>,
+    pub cgroup: Option<String>,
+    /// (open descriptors, their distinct targets)
+    pub fds: Option<(usize, Vec<String>)>,
+    pub read_rate: f64,
+    pub write_rate: f64,
+    pub children: Vec<(u32, String)>,
+}
+
+/// Total bytes (read, written) by whole disks since boot, from `/proc/diskstats`.
+fn read_diskstats() -> Option<(u64, u64)> {
+    let text = fs::read_to_string("/proc/diskstats").ok()?;
+    let (mut r, mut w) = (0u64, 0u64);
+    for line in text.lines() {
+        let f: Vec<&str> = line.split_whitespace().collect();
+        if f.len() < 10 || !is_whole_disk(f[2]) {
+            continue;
+        }
+        // fields: major minor name reads merged SECTORS_READ ms writes merged SECTORS_WRITTEN ...
+        r += f[5].parse::<u64>().unwrap_or(0) * 512;
+        w += f[9].parse::<u64>().unwrap_or(0) * 512;
+    }
+    Some((r, w))
+}
+
+/// `nvme0n1`, `sda`, `vdb`, `mmcblk0`: yes. Partitions, loop, ram, dm and zram devices: no.
+fn is_whole_disk(name: &str) -> bool {
+    let digits_tail = |prefix: &str| {
+        name.strip_prefix(prefix)
+            .is_some_and(|rest| !rest.is_empty() && rest.chars().all(|c| c.is_ascii_digit()))
+    };
+    if let Some(rest) = name.strip_prefix("nvme") {
+        return !rest.contains('p') && rest.contains('n');
+    }
+    if name.starts_with("sd") || name.starts_with("vd") || name.starts_with("hd") {
+        return name[2..].chars().all(|c| c.is_ascii_lowercase()) && name.len() > 2;
+    }
+    digits_tail("mmcblk")
 }
 
 fn is_headline_sensor(label: &str) -> bool {
@@ -384,5 +589,63 @@ pub fn fmt_duration(secs: u64) -> String {
         format!("{d}D {h:02}:{m:02}:{s:02}")
     } else {
         format!("{h:02}:{m:02}:{s:02}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_whole_disk;
+
+    #[test]
+    fn whole_disks_only() {
+        for yes in ["nvme0n1", "nvme1n1", "sda", "vdb", "mmcblk0"] {
+            assert!(is_whole_disk(yes), "{yes}");
+        }
+        for no in [
+            "nvme0n1p2",
+            "sda1",
+            "loop0",
+            "zram0",
+            "dm-0",
+            "mmcblk0p1",
+            "sr0",
+        ] {
+            assert!(!is_whole_disk(no), "{no}");
+        }
+    }
+}
+
+/// Runs a real busy process and waits for the ticker alert. Slow (~8 s), so not part of the
+/// default run: `cargo test -- --ignored hog_alert`.
+#[cfg(test)]
+mod hog_tests {
+    use super::Monitor;
+    use std::process::{Command, Stdio};
+    use std::time::{Duration, Instant};
+
+    #[test]
+    #[ignore]
+    fn hog_alert_fires_for_a_busy_process() {
+        let mut child = Command::new("yes").stdout(Stdio::null()).spawn().unwrap();
+        let pid = child.id();
+        let mut m = Monitor::new().unwrap();
+        let start = Instant::now();
+        let mut seen = Vec::new();
+        while start.elapsed() < Duration::from_secs(9) {
+            std::thread::sleep(Duration::from_millis(1000));
+            m.refresh();
+            if let Some(p) = m.procs.iter().find(|p| p.pid == pid) {
+                seen.push(p.cpu);
+            }
+            if m.alerts.iter().any(|a| a.contains(&format!("PID {pid} "))) {
+                child.kill().ok();
+                child.wait().ok();
+                eprintln!("cpu samples: {seen:?}");
+                return;
+            }
+        }
+        child.kill().ok();
+        child.wait().ok();
+        panic!("no alert for `yes`; cpu samples: {seen:?}");
     }
 }

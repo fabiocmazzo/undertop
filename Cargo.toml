@@ -1,6 +1,6 @@
 [package]
 name = "undertop"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 license = "MIT"
 description = "A system monitor dressed as the operations console of an underground silo"
@@ -10,4 +10,6 @@ repository = "https://github.com/fabiocmazzo/undertop"
 chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 color-eyre = "0.6.5"
 ratatui = "0.30.2"
+serde = { version = "1.0.229", features = ["derive"] }
 sysinfo = "0.40.4"
+toml = "1.2.3"
