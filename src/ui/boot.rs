@@ -25,11 +25,13 @@ pub fn draw(f: &mut Frame, area: Rect, app: &App) {
         ("OPERATOR CLEARANCE".into(), "GRANTED".into()),
     ];
 
-    let logo_w = big_text_width("BLTOP", 4);
+    // the biggest logo that fits
+    let scale = (1..=4).rev().find(|&s| big_text_width("UNDERTOP", s) + 4 <= area.width).unwrap_or(1);
+    let logo_w = big_text_width("UNDERTOP", scale);
     let block_h = 3 + 2 + checks.len() as u16 + 3;
     let top = area.y + area.height.saturating_sub(block_h) / 2;
     let lx = area.x + area.width.saturating_sub(logo_w) / 2;
-    big_text(f.buffer_mut(), lx, top, "BLTOP", 4, t.bright, t.warn, area);
+    big_text(f.buffer_mut(), lx, top, "UNDERTOP", scale, t.bright, t.warn, area);
 
     let w = 60u16.min(area.width.saturating_sub(4));
     let x = area.x + (area.width - w) / 2;

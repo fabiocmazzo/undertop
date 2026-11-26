@@ -119,21 +119,23 @@ fn draw_header(f: &mut Frame, area: Rect, app: &App) {
     let inner = block.inner(area);
     f.render_widget(block, area);
 
-    let wide = inner.width >= 118;
+    // wide: big logo and clock; medium: small logo; narrow: no room for the clock
+    let wide = inner.width >= 150;
+    let narrow = inner.width < 100;
     let logo_scale = if wide { 2 } else { 1 };
-    let logo_w = big_text_width("BLTOP", logo_scale);
+    let logo_w = big_text_width("UNDERTOP", logo_scale);
     let now = Local::now();
-    let time = now.format(if wide { "%H:%M:%S" } else { "%H:%M" }).to_string();
-    let clock_w = big_text_width(&time, 1);
+    let time = now.format("%H:%M:%S").to_string();
+    let clock_w = if narrow { 0 } else { big_text_width(&time, 1) + 4 };
     let [logo, info, stripes, clk] = Layout::horizontal([
         Constraint::Length(logo_w + 2),
         Constraint::Min(30),
         Constraint::Max(18),
-        Constraint::Length(clock_w + 4),
+        Constraint::Length(clock_w),
     ])
     .areas(inner);
 
-    big_text(f.buffer_mut(), logo.x + 1, logo.y, "BLTOP", logo_scale, t.bright, t.warn, logo);
+    big_text(f.buffer_mut(), logo.x + 1, logo.y, "UNDERTOP", logo_scale, t.bright, t.warn, logo);
 
     let k = Style::new().fg(t.dim);
     let v = Style::new().fg(t.bright);
@@ -177,9 +179,11 @@ fn draw_header(f: &mut Frame, area: Rect, app: &App) {
         }
     }
 
-    let blink = (app.frame / 6).is_multiple_of(2);
-    let shown = if blink { time.clone() } else { time.replace(':', ";") };
-    big_text(f.buffer_mut(), clk.x + 2, clk.y, &shown, 1, t.fg, t.bright, clk);
+    if !narrow {
+        let blink = (app.frame / 6).is_multiple_of(2);
+        let shown = if blink { time.clone() } else { time.replace(':', ";") };
+        big_text(f.buffer_mut(), clk.x + 2, clk.y, &shown, 1, t.fg, t.bright, clk);
+    }
 }
 
 fn shift_name(hour: u32) -> String {
@@ -672,7 +676,7 @@ mod tests {
     use crate::app::App;
 
     /// Renders every screen at a few sizes; fails on panics (out-of-range drawing, etc.).
-    /// `BLTOP_DUMP=<0..3> cargo test -- --nocapture` prints that screen (console, boot, help, kill).
+    /// `UNDERTOP_DUMP=<0..3> cargo test -- --nocapture` prints that screen (console, boot, help, kill).
     #[test]
     fn renders_at_many_sizes() {
         let mut app = App::new(false).unwrap();
@@ -684,7 +688,7 @@ mod tests {
                 app.kill = (screen == 3).then(|| crate::app::KillPrompt { pid: 1, name: "init".into() });
                 let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
                 term.draw(|f| super::draw(f, &mut app)).unwrap();
-                if std::env::var("BLTOP_DUMP").is_ok_and(|v| v == screen.to_string()) {
+                if std::env::var("UNDERTOP_DUMP").is_ok_and(|v| v == screen.to_string()) {
                     let buf = term.backend().buffer();
                     let mut out = String::new();
                     for y in 0..h {

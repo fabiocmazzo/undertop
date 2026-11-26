@@ -1,4 +1,4 @@
-# bltop — Subterranean Operations Terminal
+# undertop — Subterranean Operations Terminal
 
 A hobby alternative to `htop` / `btop` for Linux, dressed as the operations console of an underground
 silo: amber phosphor, chunky block letters, hazard stripes, liquid tanks, and a CRT that flickers a bit.
@@ -22,7 +22,7 @@ Minimum terminal size is 80x24; it looks best at 160x45 or larger, in a truecolo
 
 ```
 ╔ SUBTERRANEAN OPERATIONS TERMINAL ══════════════════════════════════════════ OS ╗
-║ BLTOP (block font)   NODE / KERNEL / UPTIME / LOAD / SHIFT / STATUS   ▚▚▚  CLOCK ║
+║ UNDERTOP (block font)   NODE / KERNEL / UPTIME / LOAD / SHIFT / STATUS   ▚▚▚  CLOCK ║
 ╚════════════════════════════════════════════════════════════════════ PALETTE ═══╝
 ┏ 01 REACTOR CORE (CPU) ━━━━━━━━━━━━━━━━━━━━━━━━━┓┏ 02 RESERVOIR (memory) ━━━━━━━┓
 ┃ per-core vertical gauges │ total load history  ┃┃ MEM tank │ SWAP tank │ stats ┃
@@ -34,10 +34,10 @@ Minimum terminal size is 80x24; it looks best at 160x45 or larger, in a truecolo
  [Q] QUIT [?] HELP …                      scrolling ticker / status messages
 ```
 
-- **Header**: the `BLTOP` logo in a 3x5 pixel block font drawn with half blocks, host facts, the work
+- **Header**: the `UNDERTOP` logo in a 3x5 pixel block font drawn with half blocks, host facts, the work
   shift by the hour of day, a status that blinks when the load or a temperature is high, scrolling hazard
-  stripes and a big clock with blinking colons. On narrow screens the logo shrinks and the clock drops the
-  seconds.
+  stripes and a big clock with blinking colons. Below 150 columns the logo shrinks, and below 100 the clock is
+  hidden. The boot screen uses the biggest logo that fits.
 - **01 Reactor core**: one vertical gauge per logical CPU with 1/8-cell resolution, hex labels, and a
   column chart of total load over a dotted grid. The panel lamp blinks above 50 %.
 - **02 Reservoir**: memory and swap drawn as liquid tanks with an animated surface, darker toward the
@@ -110,7 +110,7 @@ Minimum terminal size is 80x24; it looks best at 160x45 or larger, in a truecolo
    `Y` (SIGTERM) or `9` (SIGKILL), and any other key aborts.
 10. **Test**: one render test draws every screen (console, boot, help, kill dialog) into ratatui's
     `TestBackend` at sizes from 60x20 to 240x60, so a layout that draws out of bounds fails `cargo test`.
-    `BLTOP_DUMP=<0..3> cargo test -- --nocapture` prints a screen as text.
+    `UNDERTOP_DUMP=<0..3> cargo test -- --nocapture` prints a screen as text.
 
 ## Ideas for later
 

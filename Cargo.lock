@@ -129,16 +129,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "bltop"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "color-eyre",
- "ratatui",
- "sysinfo",
-]
-
-[[package]]
 name = "bumpalo"
 version = "3.20.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1805,6 +1795,16 @@ name = "ucd-trie"
 version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f20bdbfc9915686faa18fb5bbe8b4552778505defbf9f12289beefbc44092a6"
+
+[[package]]
+name = "undertop"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "color-eyre",
+ "ratatui",
+ "sysinfo",
+]
 
 [[package]]
 name = "unicode-ident"

@@ -1,4 +1,4 @@
-//! bltop: a system monitor dressed as the operations console of an underground silo.
+//! undertop: a system monitor dressed as the operations console of an underground silo.
 
 mod app;
 mod sysmon;
@@ -8,9 +8,9 @@ mod ui;
 use color_eyre::Result;
 
 const USAGE: &str = "\
-bltop - subterranean operations terminal
+undertop - subterranean operations terminal
 
-USAGE: bltop [--no-boot] [--theme <amber|phosphor|cobalt|lockdown>]
+USAGE: undertop [--no-boot] [--theme <amber|phosphor|cobalt|lockdown>]
 
 Press ? inside the program for the operator manual.";
 
