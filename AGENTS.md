@@ -1,0 +1,235 @@
+<!-- idetea-ui:begin (IDE TEA: "Interfaces" command; edit outside these markers) -->
+## Questions through the IDE (Interfaces panel)
+
+When you need me to choose between options, confirm something or fill in a few fields, you can create an
+interface in the TEA IDE instead of asking in the chat. This text is enough; the full format (in Portuguese) is
+in `.idetea/ui/FORMAT.md`, which the IDE writes for the version that is open, with the JSON Schema next to it
+(`.idetea/ui/idetea-ui.schema.json`).
+
+Talk to me in the language I use with you, including every text you put in an interface (titles, labels,
+options, buttons). These instructions are in English only because they are meant for agents. Once we are using
+the panel, put every question that needs my answer there, not only in the chat: I will be looking at the panel.
+
+### The `idetea` commands (use these first)
+
+If `idetea` is on the PATH, these commands do the file work described below for you (temporary file, revision,
+check, waiting, cleanup). Run them from the project folder. They do not skip anything: I still answer and approve
+every question and every terminal.
+
+- `idetea ask --text "…" --options "a|b|c"` (or `--confirm`, or `--input "Label"`) shows a question in the panel,
+  waits (10 minutes by default, `--timeout <seconds>`) and prints the answer (`--confirm` prints `yes` or `no` and
+  exits 1 on `no`). For a full form, write the document below to a file and run `idetea ask <file.json> --name <name>`
+  (`-` reads it from stdin): it prints the whole response; `--json` does that for the short forms too, and
+  `--value /pointer` prints one value. My comment, the attachments and an outdated-IDE warning go to stderr. Exit codes: 0 answered,
+  2 the panel would refuse the document (the errors go to stderr), 4 no answer in time (the question stays; `idetea
+  ask --resume <name>` waits again). `--keep` leaves the document to show a result in a later revision; `idetea ask
+  --close <name>` removes it.
+- `idetea run --title "…" -- <command>` asks for an IDE terminal (see below), waits for the end, prints the answer the
+  command wrote to `$IDETEA_ANSWER`, cleans up and exits with the command's code (5 refused, 6 closed by me or lost,
+  2 invalid request). `--worktree <branch>` runs it in its own worktree; `--no-wait`, then `idetea run --wait <name>`
+  or `idetea run --stop <name>`.
+- `idetea agent [name] [--worktree <branch>]` asks for an IDE terminal tab with a coding agent (`claude`, `codex`…
+  or one of my launchers; `--list` shows them), with the same approval as `idetea run`. It prints the request name;
+  `idetea run --wait <name>` waits for the end.
+- `idetea status` tells what I have open: the active file with the cursor, the open files, and which ones have
+  unsaved changes (`--json` for JSON). Exit code 3: the IDE is not open in this project.
+- `idetea open <file>[:<line>[:<column>]]` shows me a file in the IDE, without asking anything.
+- `idetea history` lists what I answered in the panel, oldest first (`--name <name>`, `--since YYYY-MM-DD`,
+  `--last N` (20 by default), `--all`, `--json`). The IDE keeps every question, my answer and my comment in
+  `.idetea/history/` (out of git). After losing context, read it instead of asking me again.
+
+Without `idetea` on the PATH, or with an older one that does not know a command (it prints its usage), use the
+files as below.
+
+### Questions by file
+
+1. Write `.idetea/ui/<name>.json` (name: lowercase letters, digits, `_` and `-`). Write to a temporary file and
+   rename it, so the IDE never sees a half-written file: `cat > .idetea/ui/.<name>.json.tmp`, then `mv` to the
+   final name.
+   ```json
+   {"format": "idetea-ui", "version": 1, "revision": 1, "title": "…", "source": "<your name>",
+    "data": {"option": "a", "tests": true},
+    "components": [
+      {"id": "q", "component": "text", "text": "…"},
+      {"id": "op", "component": "select", "label": "…", "value": "/option", "options": ["a", {"value": "b", "label": "B"}]},
+      {"id": "t", "component": "checkbox", "label": "Write tests", "value": "/tests"},
+      {"id": "n", "component": "input", "label": "Name", "placeholder": "optional", "value": "/name"},
+      {"id": "ok", "component": "button", "label": "Confirm", "action": {"name": "ok", "context": ["/option", "/tests", "/name"]}},
+      {"id": "no", "component": "button", "label": "Cancel", "style": "secondary", "action": {"name": "cancel"}}
+    ]}
+   ```
+   Before the `mv`, you can check the file the way the panel reads it: `.idetea/ui/check .idetea/ui/.<name>.json.tmp`
+   (exit 1 on errors; it also prints warnings and media problems). The IDE writes that script for the version that
+   is open. If it says the instructions in `AGENTS.md`/`CLAUDE.md` are older than the IDE's, ask me to run the
+   "teach the agents" command and reread this file before publishing.
+   - Components: `text` (`style`: `muted`, `warning`, `error`), `markdown` (`text`: lists, `code`, emphasis,
+     links), `select`, `checkbox` (boolean), `input` (text) and `button` (`style`: `secondary`, `danger`).
+     `value` is a JSON pointer to a value in `data`; `data` holds the initial values.
+   - For a decision: `"recommended": true` and `"note": "why"` on a `select` option (or a `gallery` item) mark the one
+     you recommend; `number` and `slider` (`min`, `max`, `step`, `unit`; the value is a JSON number); `"show_if":
+     {"path": "/mode", "equals": "branch"}` on any component (also `not_equals`, `in`, `truthy`) shows it only then,
+     and a hidden field does not hold a `requires`; `{"component": "columns", "children": ["a", "b"]}` puts up to 4
+     components side by side, to compare options.
+   - The response only carries the paths listed in the `context` of the clicked button; a field never filled
+     comes as `null`. A path to an object (`/review`) brings the whole object, with my changes to the fields
+     inside it.
+   - `action.name` is free text that comes back in the response so you know which button was clicked.
+   - After a click, the buttons stay disabled until you write a new revision.
+   - To show me a file, or ask for a longer text (commit message, PR description), use the `file` component:
+     `{"id": "f", "component": "file", "path": ".idetea/ui/rascunhos/commit.md", "line": 3, "column": 1,
+     "label": "Edit the message", "open": true}`. `path` is relative to the root; the link opens the file at that
+     position, and `open: true` opens it by itself when the revision arrives (several with `open`: one tab each,
+     the last one in front; use it on one file). Create the file first (drafts in
+     `.idetea/ui/rascunhos/`, outside git). When a button is clicked, the IDE saves the file before writing the
+     response: read the file from disk after it.
+   - Images in the panel: `{"id": "s", "component": "image", "path": "art/ship.png", "pixelated": true,
+     "background": "checker", "height": 96}`; to compare or let me choose, `{"id": "g", "component": "gallery",
+     "select": "one", "value": "/pick", "items": [{"id": "a", "path": "a.png", "label": "A"}, …]}` (`select`:
+     `none`, `one` or `many`). The panel rereads an image when the file changes, so regenerate it and I see the
+     new one. A click opens it in the image tab (zoom). Images inside `markdown` show only their alt text.
+   - Animated spritesheet: `{"id": "fly", "component": "sprite", "path": "art/bird.png", "frames": 2, "fps": 8,
+     "pixelated": true, "background": "checker", "height": 64}` (frames in a row of equal width; for a grid add
+     `frame_width` and `frame_height`). I get Pause, Next frame and the frame number.
+   - Sound in the panel: `{"id": "v", "component": "audio", "path": "sfx/wind.wav", "label": "Wind", "loop": true}`
+     (`wav`, `ogg`, `oga`, `opus`, `flac`, `mp3`). I get Play/Stop (one sound at a time, through the system
+     player); for WAV the panel also shows duration, rate, channels, bits, peak in dBFS (with a warning at 0 dBFS)
+     and the waveform, and rereads them when the file changes.
+   - A table, to show data or let me pick rows: `{"id": "r", "component": "table", "path": "out/failures.csv",
+     "select": "many", "value": "/pick", "key": "name"}` (`csv`, `tsv`, `jsonl`; or inline `"columns": [...]` and
+     `"rows": [[...]]`). The value is the `key` cell of each row I pick (or the row number); `requires` works with
+     it. From the shell: `idetea ask --table out/failures.csv --pick many --key name` prints one key per line.
+     A `.csv`, `.tsv` or `.jsonl` opened in the IDE shows as a table where I can edit cells.
+   - Other media: a `file` (or a `markdown` link) to a PDF opens a PDF tab; SVG opens as text with a preview.
+     Audio, video and other binary files do not open in a tab.
+   - Links in `markdown` open the web (`https://…`), project files (`src/main.rs:42`), the IDE config
+     (`idetea:config`, `idetea:config-project`) or a project file in the system app (`[play](idetea:open/index.html)`;
+     only `html`, `htm`, `pdf`, images, audio, `mp4` and `webm`). Use a `markdown` for step lists and commands instead of one
+     `text` per step. Put every command I should run in a fenced code block: the panel shows a Copy button on it.
+   - When I must do several things before answering (a manual test), use `steps` instead of a numbered list, and
+     make the approve button wait for them: `{"id": "s", "component": "steps", "value": "/done", "items":
+     [{"id": "a", "text": "Run `x`"}, {"id": "b", "text": "Maybe y", "optional": true}]}` and
+     `"requires": "/done"` on the button. The value is the list of checked ids; put `/done` in the `context` of
+     the "failed" button too, so you see how far I got. `requires` also takes any field and a list:
+     `"requires": ["/pick", "/what"]` waits for a choice in the gallery and a non-empty input (the panel says what
+     is missing).
+2. Wait for the response in `.idetea/ui/responses/<name>/`. Use bash (in zsh, `compgen` does not exist or
+   behaves differently), and touch `<name>.wait` while you wait, so the panel can tell me whether you are still
+   waiting (no need to delete it afterwards):
+   ```sh
+   timeout 600 bash -c 'until ls .idetea/ui/responses/<name>/*.json >/dev/null 2>&1; do touch .idetea/ui/<name>.wait; sleep 1; done'
+   ```
+   Each file is one response:
+   `{"action": "ok", "values": {"/option": "b", "/tests": true, "/name": null}, "revision": 1, "seq": 1, ...}`.
+   `action` is the button's `action.name`; `revision` is the revision I was seeing when I clicked; `seq` is the
+   order (there may be more than one file; read them in name order). If I wrote a comment, it comes as
+   `"comment": "…"`: it may be a question back or a caveat, so answer it (new revision or chat). The IDE adds the
+   comment field by itself; don't add your own "notes" input. The response also says which IDE wrote it:
+   `"ide": {"pid": …, "version": …, "outdated": false}`. `outdated: true` means the IDE was rebuilt after it opened
+   and the click came from old code: when testing a change, ask me to restart it (palette: "Restart the IDE") and
+   repeat. Don't write claims about which IDE is open into the document; the panel shows that itself.
+   `ide.instructions` is the version of these instructions in the IDE; if it differs from the "Instructions
+   version" line at the end of this block, the IDE has newer ones: ask me to run "Interfaces: teach the agents"
+   and reread this file. With images or sounds in the document, the response has `media`, by path:
+   `{"sfx/wind.wav": {"size": 61784, "modified": "…", "seconds": 1.9, "peak_db": -0.3, "played": 2, "completed": 1}}`
+   (`size` and `modified` of the file that was on screen; for WAV, what the panel showed: `seconds`, `peak_db`,
+   `clips: true` at 0 dBFS; counts in this revision: `opened` (also `idetea:open` links), `played`, `completed`,
+   `stopped` (I clicked Stop), `interrupted` (another sound started), `stepped`, `shown` (it was on screen for
+   half a second; without it, I never scrolled to it)). It tells what I did, not what I heard or saw. Read the
+   response and **delete the response file**: that is how the IDE knows you got it. If I attached something (a
+   screenshot of the IDE or a file), the response has `"attachments": [{"path": ".idetea/ui/responses/<name>/anexos/1-1.png",
+   "kind": "screenshot", ...}]`: read them (an image with your image reader), then delete them with the response.
+   `"attach": "screenshot"` (or `"file"`, `"any"`) on a button makes it wait for one, when you need to see what I see.
+3. To show a result or ask something else, rewrite the same file with a higher `revision`. A document with only
+   `text` and no buttons shows something without waiting for a response.
+4. When you are done, delete `.idetea/ui/<name>.json`. The rest of the folder (`.gitignore`, `responses/`)
+   belongs to the IDE; leave it. To reuse a name later, first delete any response left in
+   `.idetea/ui/responses/<name>/`, and keep `revision` higher than any you wrote under that name: then a response
+   whose `revision` is not the one you wrote is an old one.
+
+Handing me a manual test, do it in one interface: what changed in a `markdown`, what to do in a `steps`, and three
+buttons: "Approved, you can commit", "Approved, don't commit" and "Failed" (the first two with `requires`). An
+approval is my judgement, not proof: before committing, check what the test should have left behind (files on
+disk, `ide.outdated` false in the response). If something is missing, ask again in a new revision saying what you
+did not find.
+
+Do not put secrets in the document. If no response comes within 10 minutes (the panel may be turned off), ask in
+the chat.
+
+### Running a command in an IDE terminal
+
+To run something I should be able to watch and type into (another agent, a dev server, an interactive tool), ask
+the IDE for a terminal instead of running it in the background. I confirm every request, seeing the whole command.
+
+1. Write `.idetea/agents/<name>.json` (same name rules; temporary file and `mv`, as above):
+   ```json
+   {"format": "idetea-terminal", "version": 1, "title": "Reviewer", "source": "<your name>",
+    "command": "claude 'review the last commit'", "cwd": "."}
+   ```
+   `command` runs with `/bin/sh -c` (`&&`, pipes and variables work); `cwd` is relative to the project root
+   (default: the root) and must stay inside it.
+2. The IDE writes `.idetea/agents/<name>.status.json`: `{"state": "pending", ...}` while I decide, then `running`,
+   and at the end `exited` with `"code": <exit code>`. Other states: `refused` (I said no), `closed` (I closed the
+   tab before it ended), `invalid` (with `"error"`: fix the request and write it again) and `lost` (the IDE closed
+   while it ran). Wait with the same kind of loop, checking `state`; there is no `.wait` file here.
+3. Deleting the request file stops the terminal. When you are done, delete the request and then the status.
+   To ask again with the same name, delete both first.
+
+#### Asking another agent and waiting for it
+
+To hand a task to another agent (a review, a fix on the side), ask for a terminal with that agent and
+`"worktree": "<branch>"`. The IDE creates a git worktree in `.idetea/worktrees/<name>` on that branch (a new one
+from HEAD, or the existing branch) and runs the command there, so the two of you never edit the same files:
+```json
+{"format": "idetea-terminal", "version": 1, "title": "Reviewer", "source": "<your name>", "worktree": "agent/review",
+ "command": "claude -p 'Review the last commit. Write your findings to the file in $IDETEA_ANSWER.'"}
+```
+Every command gets `IDETEA_ANSWER`, the path of `.idetea/agents/<name>.answer.md` in the main project: tell the
+helper to write its answer there. The status says where things are (`"answer"`, and with a worktree `"worktree"`
+and `"branch"`). Wait for `exited`, read the answer, and bring code changes in from the branch with the usual
+flow (manual test and my approval before merging). When you are done, delete the request, the status and the
+answer: the IDE removes the worktree if it has nothing uncommitted (otherwise it stays and I am told); the branch
+always stays.
+
+Never put secrets in the command: I see it on screen, and it stays in the file.
+
+## Project memory (`docs/memory/`, `docs/decisions/`)
+
+This project keeps a memory shared by every agent, in plain files under version control: what one agent learns,
+the next one knows.
+
+- `docs/memory/`: facts, one per Markdown file, and `docs/memory/README.md`, the index, with one line per fact:
+  `- [Title](file.md) — one-line hook`.
+- `docs/decisions/`: architecture decisions as ADRs in the MADR template, numbered (`0001-use-sqlite.md`).
+
+At the start of a task, read `docs/memory/README.md` if it exists, and open the facts that matter for the task.
+A fact reflects what was true when it was written: before relying on one that names a file, function or flag,
+check that it still exists.
+
+When you learn something non-obvious about the project that the next agent will need (a constraint, a convention,
+a gotcha, where something lives outside the repository), write it as a fact and add its line to the index (create
+the folder and the index with the first fact):
+```markdown
+---
+name: tests-offline
+description: the tests must not use the network; CI runs offline
+type: constraint
+updated: 2026-11-13
+---
+The tests run in CI without network access. Use the fixtures in `tests/fixtures/`.
+
+**Why:** the CI runner has no internet access.
+```
+`type` is `constraint`, `convention`, `gotcha` or `reference`. Update an existing fact instead of writing a
+duplicate (and its `updated` date), and delete a fact, with its index line, when it turns out wrong. Don't record
+what the code, the git history or this file already say, nor what only matters to the current task.
+
+When we make an architecture decision (a library, a format, a structure that is hard to change), record it as an
+ADR in `docs/decisions/` with the next number: status, context, the options considered, the decision and its
+consequences. Don't rewrite an accepted ADR to change the decision: write a new one and mark the old one
+"Superseded by NNNN".
+
+Write these files in the language of the project's documentation. They go into git like any other change, so
+never put secrets, credentials or personal data in them.
+
+Instructions version: `ca075579`
+<!-- idetea-ui:end -->

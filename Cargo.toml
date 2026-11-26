@@ -1,0 +1,10 @@
+[package]
+name = "bltop"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
+color-eyre = "0.6.5"
+ratatui = "0.30.2"
+sysinfo = "0.40.4"
