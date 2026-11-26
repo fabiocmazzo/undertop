@@ -6,6 +6,8 @@
 
 *A system monitor for people who live underground. Remain calm. Remain below.*
 
+[![MAINFRAME INTEGRITY](https://github.com/fabiocmazzo/undertop/actions/workflows/ci.yml/badge.svg)](https://github.com/fabiocmazzo/undertop/actions/workflows/ci.yml)
+
 ![undertop: boot sequence, palettes, process manifest and termination dialog](assets/undertop.gif)
 
 </div>
@@ -36,6 +38,9 @@ Written in Rust with [ratatui](https://ratatui.rs/) and [sysinfo](https://crates
 | Toolchain | Rust 1.85 or newer (edition 2024) |
 
 ## § 3. COMMISSIONING THE TERMINAL
+
+Download the Linux binary from the [latest release](https://github.com/fabiocmazzo/undertop/releases/latest),
+or build it:
 
 ```sh
 cargo install --git https://github.com/fabiocmazzo/undertop
@@ -108,6 +113,9 @@ supervisor.
 ## § 8. FOR MAINTENANCE PERSONNEL
 
 - Design notes and every decision taken so far: [`projeto.md`](projeto.md).
+- What changed in each version: [`SHIFT_LOG.md`](SHIFT_LOG.md).
+- Releases: push a tag `vX.Y.Z` with a matching `## vX.Y.Z — Name` section in the shift log; the
+  release workflow builds the binary and publishes it with that section as notes.
 - `cargo test` renders every screen at several sizes; `UNDERTOP_DUMP=0 cargo test -- --nocapture` prints
   the console as text (`1` boot, `2` manual, `3` termination dialog).
 - The demo above is recorded with [vhs](https://github.com/charmbracelet/vhs) from

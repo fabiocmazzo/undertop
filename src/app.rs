@@ -129,9 +129,10 @@ impl App {
                     break;
                 }
                 if let Event::Key(key) = event::read()?
-                    && key.kind == KeyEventKind::Press {
-                        self.on_key(key);
-                    }
+                    && key.kind == KeyEventKind::Press
+                {
+                    self.on_key(key);
+                }
                 if self.quit {
                     return Ok(());
                 }
@@ -145,7 +146,11 @@ impl App {
                 self.mon.refresh();
                 self.rebuild();
             }
-            if self.status.as_ref().is_some_and(|(_, t)| t.elapsed() > Duration::from_secs(4)) {
+            if self
+                .status
+                .as_ref()
+                .is_some_and(|(_, t)| t.elapsed() > Duration::from_secs(4))
+            {
                 self.status = None;
             }
         }
@@ -185,7 +190,12 @@ impl App {
         let idx = self
             .selected_pid
             .and_then(|pid| self.visible.iter().position(|p| p.pid == pid))
-            .unwrap_or_else(|| self.table.selected().unwrap_or(0).min(self.visible.len().saturating_sub(1)));
+            .unwrap_or_else(|| {
+                self.table
+                    .selected()
+                    .unwrap_or(0)
+                    .min(self.visible.len().saturating_sub(1))
+            });
         self.select(idx);
     }
 
@@ -217,7 +227,9 @@ impl App {
         if let Some(k) = &self.kill {
             let (pid, name) = (k.pid, k.name.clone());
             match key.code {
-                KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => self.terminate(pid, &name, false),
+                KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
+                    self.terminate(pid, &name, false)
+                }
                 KeyCode::Char('9') => self.terminate(pid, &name, true),
                 _ => self.flash("TERMINATION ABORTED"),
             }
@@ -254,11 +266,19 @@ impl App {
             }
             KeyCode::Char('x') => {
                 self.effects = !self.effects;
-                self.flash(if self.effects { "CRT EMULATION ▸ ON" } else { "CRT EMULATION ▸ OFF" });
+                self.flash(if self.effects {
+                    "CRT EMULATION ▸ ON"
+                } else {
+                    "CRT EMULATION ▸ OFF"
+                });
             }
             KeyCode::Char(' ') => {
                 self.paused = !self.paused;
-                self.flash(if self.paused { "TELEMETRY ▸ FROZEN" } else { "TELEMETRY ▸ LIVE" });
+                self.flash(if self.paused {
+                    "TELEMETRY ▸ FROZEN"
+                } else {
+                    "TELEMETRY ▸ LIVE"
+                });
             }
             KeyCode::Char('s') | KeyCode::Tab => {
                 self.sort = self.sort.next();
@@ -275,7 +295,8 @@ impl App {
             }
             KeyCode::Char('/') | KeyCode::Char('f') => self.filter_mode = true,
             KeyCode::Char('+') | KeyCode::Char('=') => {
-                self.interval = (self.interval + Duration::from_millis(250)).min(Duration::from_secs(10));
+                self.interval =
+                    (self.interval + Duration::from_millis(250)).min(Duration::from_secs(10));
                 self.flash(format!("SAMPLE RATE ▸ {} ms", self.interval.as_millis()));
             }
             KeyCode::Char('-') => {
@@ -293,7 +314,10 @@ impl App {
             KeyCode::End | KeyCode::Char('G') => self.select(usize::MAX),
             KeyCode::Delete | KeyCode::Char('K') | KeyCode::F(9) => {
                 if let Some(p) = self.table.selected().and_then(|i| self.visible.get(i)) {
-                    self.kill = Some(KillPrompt { pid: p.pid, name: p.name.clone() });
+                    self.kill = Some(KillPrompt {
+                        pid: p.pid,
+                        name: p.name.clone(),
+                    });
                 }
             }
             _ => {}

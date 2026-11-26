@@ -1,0 +1,40 @@
+name: Release
+
+# Push a tag like v0.1.0 to build the Linux binary and publish a GitHub release.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Test
+        run: cargo test --locked
+      - name: Build
+        run: cargo build --release --locked
+      - name: Package
+        run: |
+          name="undertop-${GITHUB_REF_NAME}-x86_64-linux"
+          mkdir "$name"
+          cp target/release/undertop README.md LICENSE "$name/"
+          tar czf "$name.tar.gz" "$name"
+          sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Title and notes come from this version's section of SHIFT_LOG.md.
+          title=$(grep -m1 "^## $GITHUB_REF_NAME" SHIFT_LOG.md | sed 's/^## //')
+          awk -v v="$GITHUB_REF_NAME" '/^## /{p = index($0, "## " v) == 1; next} p' SHIFT_LOG.md > notes.md
+          gh release create "$GITHUB_REF_NAME" undertop-*.tar.gz undertop-*.tar.gz.sha256 \
+            --title "${title:-$GITHUB_REF_NAME}" --notes-file notes.md

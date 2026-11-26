@@ -4,8 +4,8 @@
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
-use ratatui::widgets::{Block, BorderType, Borders};
 use ratatui::text::{Line, Span};
+use ratatui::widgets::{Block, BorderType, Borders};
 
 use crate::theme::{Theme, lerp};
 
@@ -13,19 +13,39 @@ const EIGHTHS: [&str; 9] = [" ", "▁", "▂", "▃", "▄", "▅", "▆", "▇"
 
 /// A panel frame: thick border, numbered title on the left, a subtitle on the right.
 /// The subtitle is dropped when the panel is too narrow for both.
-pub fn panel<'a>(t: &Theme, width: u16, code: &str, title: &str, sub: String, lit: bool) -> Block<'a> {
+pub fn panel<'a>(
+    t: &Theme,
+    width: u16,
+    code: &str,
+    title: &str,
+    sub: String,
+    lit: bool,
+) -> Block<'a> {
     let lamp = if lit { "◉" } else { "○" };
     let needed = code.chars().count() + title.chars().count() + sub.chars().count() + 16;
-    let sub = if needed <= width as usize { sub } else { String::new() };
+    let sub = if needed <= width as usize {
+        sub
+    } else {
+        String::new()
+    };
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Thick)
         .border_style(Style::new().fg(t.dim))
         .title(Line::from(vec![
             Span::styled("┫", Style::new().fg(t.dim)),
-            Span::styled(format!(" {lamp} "), Style::new().fg(if lit { t.warn } else { t.faint })),
-            Span::styled(format!("{code} "), Style::new().fg(t.bg).bg(t.dim).add_modifier(Modifier::BOLD)),
-            Span::styled(format!(" {title} "), Style::new().fg(t.bright).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                format!(" {lamp} "),
+                Style::new().fg(if lit { t.warn } else { t.faint }),
+            ),
+            Span::styled(
+                format!("{code} "),
+                Style::new().fg(t.bg).bg(t.dim).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!(" {title} "),
+                Style::new().fg(t.bright).add_modifier(Modifier::BOLD),
+            ),
             Span::styled("┣", Style::new().fg(t.dim)),
         ]));
     if sub.is_empty() {
@@ -75,12 +95,24 @@ fn glyph(c: char) -> [&'static str; 5] {
 /// Width in cells of `text` drawn by [`big_text`] with horizontal scale `sx`.
 pub fn big_text_width(text: &str, sx: u16) -> u16 {
     let n = text.chars().count() as u16;
-    text.chars().map(|c| glyph(c)[0].len() as u16 * sx).sum::<u16>() + n.saturating_sub(1)
+    text.chars()
+        .map(|c| glyph(c)[0].len() as u16 * sx)
+        .sum::<u16>()
+        + n.saturating_sub(1)
 }
 
 /// Draws `text` in the block font. Each pixel is `sx` cells wide; the color fades along x.
 #[allow(clippy::too_many_arguments)]
-pub fn big_text(buf: &mut Buffer, x: u16, y: u16, text: &str, sx: u16, from: Color, to: Color, clip: Rect) {
+pub fn big_text(
+    buf: &mut Buffer,
+    x: u16,
+    y: u16,
+    text: &str,
+    sx: u16,
+    from: Color,
+    to: Color,
+    clip: Rect,
+) {
     let total = big_text_width(text, sx).max(1);
     let mut cx = x;
     for ch in text.chars() {
@@ -127,7 +159,11 @@ pub fn seg_bar(buf: &mut Buffer, area: Rect, frac: f64, t: &Theme) {
     let lit = (frac.clamp(0.0, 1.0) * n as f64).round() as usize;
     for i in 0..n {
         let pos = (i as f64 + 0.5) / n as f64;
-        let (sym, color) = if i < lit { ("▮", t.level(pos)) } else { ("▯", t.faint) };
+        let (sym, color) = if i < lit {
+            ("▮", t.level(pos))
+        } else {
+            ("▯", t.faint)
+        };
         if let Some(cell) = buf.cell_mut((area.x + i as u16, area.y)) {
             cell.set_symbol(sym).set_fg(color);
         }
@@ -146,7 +182,8 @@ pub fn vbar(buf: &mut Buffer, area: Rect, frac: f64, t: &Theme) {
         for x in area.x..area.right() {
             if let Some(cell) = buf.cell_mut((x, y)) {
                 if eighths == 0 {
-                    cell.set_symbol(if row % 2 == 0 { "·" } else { " " }).set_fg(t.faint);
+                    cell.set_symbol(if row % 2 == 0 { "·" } else { " " })
+                        .set_fg(t.faint);
                 } else {
                     cell.set_symbol(EIGHTHS[eighths]).set_fg(t.level(pos));
                 }
@@ -167,7 +204,14 @@ pub fn area_chart(buf: &mut Buffer, area: Rect, values: &[f64], t: &Theme, color
             let gy = (area.bottom() - 1 - y).is_multiple_of(3);
             let gx = (area.right() - 1 - x).is_multiple_of(6);
             if let Some(cell) = buf.cell_mut((x, y)) {
-                cell.set_symbol(if gx && gy { "┼" } else if gy { "·" } else { " " }).set_fg(t.faint);
+                cell.set_symbol(if gx && gy {
+                    "┼"
+                } else if gy {
+                    "·"
+                } else {
+                    " "
+                })
+                .set_fg(t.faint);
             }
         }
     }
@@ -202,7 +246,12 @@ pub fn tank(buf: &mut Buffer, area: Rect, frac: f64, label: &str, t: &Theme, fra
     let style = Style::new().fg(t.dim);
     let (l, r, b) = (area.x, area.right() - 1, area.bottom() - 1);
     let top = area.y + 1;
-    buf.set_string(area.x, area.y, center(label, area.width as usize), Style::new().fg(t.bright));
+    buf.set_string(
+        area.x,
+        area.y,
+        center(label, area.width as usize),
+        Style::new().fg(t.bright),
+    );
     for y in top..b {
         buf.set_string(l, y, "▐", style);
         buf.set_string(r, y, "▌", style);
@@ -230,8 +279,12 @@ pub fn tank(buf: &mut Buffer, area: Rect, frac: f64, label: &str, t: &Theme, fra
             if row < full_rows {
                 // lower water is darker
                 let depth = 1.0 - row as f64 / inner_h.max(1.0);
-                cell.set_symbol(if (x + y + (frame / 4) as u16).is_multiple_of(7) { "░" } else { "█" })
-                    .set_fg(lerp(color, deep, depth * 0.8));
+                cell.set_symbol(if (x + y + (frame / 4) as u16).is_multiple_of(7) {
+                    "░"
+                } else {
+                    "█"
+                })
+                .set_fg(lerp(color, deep, depth * 0.8));
             } else if row == full_rows {
                 let rem = level - full_rows as f64;
                 let wave = ((x as f64 * 0.9 + frame as f64 * 0.35).sin() * 1.5 + rem * 8.0).round();

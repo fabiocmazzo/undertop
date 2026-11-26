@@ -5,7 +5,9 @@ use std::fs;
 use std::time::Instant;
 
 use color_eyre::Result;
-use sysinfo::{Components, Disks, Networks, Pid, ProcessStatus, ProcessesToUpdate, Signal, System, Users};
+use sysinfo::{
+    Components, Disks, Networks, Pid, ProcessStatus, ProcessesToUpdate, Signal, System, Users,
+};
 
 /// Samples kept per history (one per refresh).
 pub const HISTORY: usize = 300;
@@ -17,7 +19,9 @@ pub struct History {
 
 impl History {
     pub fn new() -> Self {
-        Self { buf: VecDeque::with_capacity(HISTORY) }
+        Self {
+            buf: VecDeque::with_capacity(HISTORY),
+        }
     }
 
     pub fn push(&mut self, v: f64) {
@@ -37,7 +41,10 @@ impl History {
 
     /// The newest `n` samples, oldest first.
     pub fn tail(&self, n: usize) -> impl Iterator<Item = f64> + '_ {
-        self.buf.iter().copied().skip(self.buf.len().saturating_sub(n))
+        self.buf
+            .iter()
+            .copied()
+            .skip(self.buf.len().saturating_sub(n))
     }
 }
 
@@ -235,8 +242,10 @@ impl Monitor {
             let mut rows = Vec::new();
             for d in self.disks.iter() {
                 let fs = d.file_system().to_string_lossy();
-                if matches!(fs.as_ref(), "tmpfs" | "devtmpfs" | "squashfs" | "overlay" | "efivarfs")
-                    || d.total_space() == 0
+                if matches!(
+                    fs.as_ref(),
+                    "tmpfs" | "devtmpfs" | "squashfs" | "overlay" | "efivarfs"
+                ) || d.total_space() == 0
                 {
                     continue;
                 }
@@ -273,7 +282,11 @@ impl Monitor {
                 let name = p.name().to_string_lossy().to_string();
                 ProcRow {
                     pid: p.pid().as_u32(),
-                    cmd: if cmd.is_empty() { format!("[{name}]") } else { cmd },
+                    cmd: if cmd.is_empty() {
+                        format!("[{name}]")
+                    } else {
+                        cmd
+                    },
                     name,
                     user: p
                         .user_id()
@@ -288,7 +301,11 @@ impl Monitor {
             })
             .collect();
 
-        let la = System::load_average().unwrap_or(sysinfo::LoadAvg { one: 0.0, five: 0.0, fifteen: 0.0 });
+        let la = System::load_average().unwrap_or(sysinfo::LoadAvg {
+            one: 0.0,
+            five: 0.0,
+            fifteen: 0.0,
+        });
         self.load = (la.one, la.five, la.fifteen);
         self.uptime = System::uptime().unwrap_or(0);
     }
@@ -330,7 +347,11 @@ fn read_battery() -> Option<Battery> {
         if !entry.file_name().to_string_lossy().starts_with("BAT") {
             continue;
         }
-        let capacity = fs::read_to_string(path.join("capacity")).ok()?.trim().parse().ok()?;
+        let capacity = fs::read_to_string(path.join("capacity"))
+            .ok()?
+            .trim()
+            .parse()
+            .ok()?;
         let status = fs::read_to_string(path.join("status"))
             .map(|s| s.trim().to_uppercase())
             .unwrap_or_else(|_| "UNKNOWN".into());
@@ -347,7 +368,11 @@ pub fn fmt_bytes(b: f64) -> String {
         v /= 1024.0;
         i += 1;
     }
-    if i == 0 { format!("{v:.0} {}", UNITS[i]) } else { format!("{v:.1} {}", UNITS[i]) }
+    if i == 0 {
+        format!("{v:.0} {}", UNITS[i])
+    } else {
+        format!("{v:.1} {}", UNITS[i])
+    }
 }
 
 pub fn fmt_duration(secs: u64) -> String {
@@ -355,5 +380,9 @@ pub fn fmt_duration(secs: u64) -> String {
     let h = (secs % 86400) / 3600;
     let m = (secs % 3600) / 60;
     let s = secs % 60;
-    if d > 0 { format!("{d}D {h:02}:{m:02}:{s:02}") } else { format!("{h:02}:{m:02}:{s:02}") }
+    if d > 0 {
+        format!("{d}D {h:02}:{m:02}:{s:02}")
+    } else {
+        format!("{h:02}:{m:02}:{s:02}")
+    }
 }

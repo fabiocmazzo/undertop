@@ -12,9 +12,17 @@ pub fn apply(f: &mut Frame, app: &mut App) {
 
     // Brownout: a strip of a few rows dims for one frame. (A whole-screen dip looked similar but
     // repainted every cell twice, which stalls slower terminals and the vhs recorder.)
-    let brownout = if app.rand() < 0.05 { Some((app.rand() * h) as u16) } else { None };
+    let brownout = if app.rand() < 0.05 {
+        Some((app.rand() * h) as u16)
+    } else {
+        None
+    };
     // A glitch band: a row shifted sideways for one frame.
-    let glitch_row = if app.rand() < 0.04 { Some((app.rand() * h) as u16) } else { None };
+    let glitch_row = if app.rand() < 0.04 {
+        Some((app.rand() * h) as u16)
+    } else {
+        None
+    };
     let glitch_shift = 1 + (app.rand() * 3.0) as u16;
     // A slow bright band rolling down the screen, like an old monitor's refresh. It moves one whole
     // row every 3 frames, so most frames repaint nothing for it (terminals and recorders thank us).
@@ -37,9 +45,12 @@ pub fn apply(f: &mut Frame, app: &mut App) {
             }
         }
         if Some(y) == glitch_row {
-            let row: Vec<_> = (area.x..area.right()).filter_map(|x| buf.cell((x, y)).cloned()).collect();
+            let row: Vec<_> = (area.x..area.right())
+                .filter_map(|x| buf.cell((x, y)).cloned())
+                .collect();
             for (i, x) in (area.x..area.right()).enumerate() {
-                let src = (i + row.len() - glitch_shift as usize % row.len().max(1)) % row.len().max(1);
+                let src =
+                    (i + row.len() - glitch_shift as usize % row.len().max(1)) % row.len().max(1);
                 if let (Some(cell), Some(s)) = (buf.cell_mut((x, y)), row.get(src)) {
                     *cell = s.clone();
                 }

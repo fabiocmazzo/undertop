@@ -23,8 +23,15 @@ fn main() -> Result<()> {
     }
     let boot = !args.iter().any(|a| a == "--no-boot");
     let mut app = app::App::new(boot)?;
-    if let Some(name) = args.iter().position(|a| a == "--theme").and_then(|i| args.get(i + 1)) {
-        match theme::THEMES.iter().position(|t| t.name.eq_ignore_ascii_case(name)) {
+    if let Some(name) = args
+        .iter()
+        .position(|a| a == "--theme")
+        .and_then(|i| args.get(i + 1))
+    {
+        match theme::THEMES
+            .iter()
+            .position(|t| t.name.eq_ignore_ascii_case(name))
+        {
             Some(i) => app.theme_idx = i,
             None => {
                 eprintln!("unknown theme: {name}\n\n{USAGE}");
