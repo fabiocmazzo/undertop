@@ -2,6 +2,13 @@
 
 Changes to the terminal, newest shift first.
 
+## Unreleased
+
+- Less than half the CPU (5.1 % → 2.1 % of one core) and a third of the memory (18 → 7 MB): no more
+  reading 3000 threads and every process's I/O each second; NVMe sensors read every 5 s.
+- The CRT emulation sends half as much to the terminal (the rolling band is flat-topped).
+- The dossier's disk I/O says MEASURING… until it has a real rate, instead of a first bogus spike.
+
 ## v0.2.0 — Second Shift
 
 The facility grows new stations, and a sense of humour.

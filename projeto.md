@@ -163,6 +163,18 @@ Minimum terminal size is 80x24; it looks best at 160x45 or larger, in a truecolo
 16. **Effects never repaint the whole screen in one frame** (see the CRT note above); the lockdown flashes
     only its frame and box, and the power-down is short.
 
+17. **Measured cost, and what was cut** (release build, 160x45, ~465 processes, 16 threads). Before:
+    5.1 % of one core, 18 MB RSS, 109 KiB/s to the terminal with CRT on. A breakdown
+    (`cargo test --release -- --ignored refresh_cost --nocapture`) showed drawing at ~1.5 % and data
+    collection at ~3.3 %, almost all in `refresh_processes` (45 ms per refresh): sysinfo's default lists
+    every thread as a process (3000+ here) and reads every process's I/O. Now: processes are refreshed
+    with only CPU, memory, user and command and `without_tasks()` (8 ms); per-process I/O is read only
+    for the PID with an open dossier (`Monitor::watch`, shown as "MEASURING…" until two readings exist,
+    since the first one is a lifetime total); NVMe sensors (~2 ms each, the drive is queried) are read
+    every 5th refresh; the CRT band is flat-topped so moving it repaints 2 rows instead of 8. After:
+    2.1 % of one core, 6.9 MB, 56 KiB/s (13 KiB/s with CRT off). No battery-saver mode: at this cost it
+    would not be worth the complexity.
+
 ## Ideas for later
 
 - Per-interface network view.

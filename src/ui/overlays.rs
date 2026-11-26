@@ -136,11 +136,10 @@ pub fn dossier(f: &mut Frame, area: Rect, app: &App) {
         ),
         field(
             "DISK I/O",
-            Some(format!(
-                "▼R {}/s ▲W {}/s",
-                fmt_bytes(d.read_rate),
-                fmt_bytes(d.write_rate)
-            )),
+            Some(match d.io {
+                Some((r, w)) => format!("▼R {}/s ▲W {}/s", fmt_bytes(r), fmt_bytes(w)),
+                None => "MEASURING…".into(),
+            }),
         ),
         field("EXE", tail(&d.exe)),
         field("CWD", tail(&d.cwd)),

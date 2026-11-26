@@ -31,7 +31,13 @@ pub fn apply(f: &mut Frame, app: &mut App) {
     let buf = f.buffer_mut();
     for y in area.y..area.bottom() {
         let scan = if y % 2 == 1 { 0.80 } else { 1.0 };
-        let band = 1.0 + 0.10 * (1.0 - ((y as f64 - roll).abs() / 4.0).min(1.0));
+        // flat-topped: when it moves one row, only its two edge rows change color, so the
+        // terminal gets ~4x fewer bytes than with a gradient across the band
+        let band = if (y as f64 - roll).abs() <= 2.5 {
+            1.08
+        } else {
+            1.0
+        };
         for x in area.x..area.right() {
             // vignette: darker toward the corners
             let dx = (x as f64 - w / 2.0) / (w / 2.0);

@@ -6,7 +6,8 @@ use std::time::{Duration, Instant};
 
 use color_eyre::Result;
 use sysinfo::{
-    Components, Disks, Networks, Pid, ProcessStatus, ProcessesToUpdate, Signal, System, Users,
+    Components, Disks, Networks, Pid, ProcessRefreshKind, ProcessStatus, ProcessesToUpdate, Signal,
+    System, UpdateKind, Users,
 };
 
 use crate::gpu::{GpuRow, Gpus};
@@ -105,6 +106,11 @@ pub struct Monitor {
     reported: HashSet<(u32, u8)>,
     /// Seconds covered by the last refresh.
     pub dt: f64,
+    /// PID whose disk I/O is also sampled (the open dossier); reading it for every process is costly.
+    pub watch: Option<u32>,
+    /// Consecutive refreshes that sampled `watch`; its first I/O reading is a total, not a rate.
+    watch_rounds: u32,
+    watch_last: Option<u32>,
     /// Ticker alerts produced by the last refresh; the app drains them.
     pub alerts: Vec<String>,
 
@@ -141,8 +147,9 @@ pub struct Monitor {
 
 impl Monitor {
     pub fn new() -> Result<Self> {
-        let mut sys = System::new_all()?;
+        let mut sys = System::new()?;
         sys.refresh_cpu_all();
+        sys.refresh_processes_specifics(ProcessesToUpdate::All, true, process_kind());
         let cores = sys.cpus().len();
         let cpu_brand = sys
             .cpus()
@@ -162,6 +169,9 @@ impl Monitor {
             hogs: HashMap::new(),
             reported: HashSet::new(),
             dt: 1.0,
+            watch: None,
+            watch_rounds: 0,
+            watch_last: None,
             alerts: Vec::new(),
             disk_r: History::new(),
             disk_w: History::new(),
@@ -199,7 +209,26 @@ impl Monitor {
         self.last_refresh = Instant::now();
         self.sys.refresh_cpu_all();
         self.sys.refresh_memory();
-        self.sys.refresh_processes(ProcessesToUpdate::All, true);
+        // Only what the manifest shows. sysinfo's default also lists every thread as a process
+        // (3000+ here) and reads every process's I/O: 45 ms per refresh instead of ~7.
+        self.sys
+            .refresh_processes_specifics(ProcessesToUpdate::All, true, process_kind());
+        self.watch_rounds = if self.watch.is_some() && self.watch == self.watch_last {
+            self.watch_rounds + 1
+        } else {
+            u32::from(self.watch.is_some())
+        };
+        self.watch_last = self.watch;
+        if let Some(pid) = self.watch {
+            let pid = [Pid::from_u32(pid)];
+            self.sys.refresh_processes_specifics(
+                ProcessesToUpdate::Some(&pid),
+                false,
+                ProcessRefreshKind::nothing()
+                    .with_disk_usage()
+                    .without_tasks(),
+            );
+        }
 
         // CPU
         let cpus = self.sys.cpus();
@@ -244,7 +273,13 @@ impl Monitor {
         self.tx_total = tx_t;
 
         // Sensors
-        self.components.refresh(false);
+        // NVMe sensors cost ~2 ms each to read (the drive is asked); they change slowly.
+        let slow_round = self.refreshes % 5 == 1;
+        for c in self.components.iter_mut() {
+            if slow_round || !c.label().starts_with("nvme") {
+                c.refresh();
+            }
+        }
         let mut temps: Vec<TempRow> = self
             .components
             .iter()
@@ -448,7 +483,8 @@ impl Monitor {
             .map(|r| (r.pid, r.name.clone()))
             .collect();
         children.sort();
-        let io = p.disk_usage();
+        // a rate needs two readings of the same process in a row
+        let io = (self.watch == Some(pid) && self.watch_rounds >= 2).then(|| p.disk_usage());
         Some(Dossier {
             row: row.clone(),
             parent: parent.map(|r| (r.pid, r.name.clone())),
@@ -459,8 +495,12 @@ impl Monitor {
             cwd: link("cwd"),
             cgroup,
             fds,
-            read_rate: io.read_bytes as f64 / self.dt,
-            write_rate: io.written_bytes as f64 / self.dt,
+            io: io.map(|u| {
+                (
+                    u.read_bytes as f64 / self.dt,
+                    u.written_bytes as f64 / self.dt,
+                )
+            }),
             children,
         })
     }
@@ -490,8 +530,8 @@ pub struct Dossier {
     pub cgroup: Option<String>,
     /// (open descriptors, their distinct targets)
     pub fds: Option<(usize, Vec<String>)>,
-    pub read_rate: f64,
-    pub write_rate: f64,
+    /// (read, write) bytes per second; `None` until it has been sampled twice.
+    pub io: Option<(f64, f64)>,
     pub children: Vec<(u32, String)>,
 }
 
@@ -524,6 +564,15 @@ fn is_whole_disk(name: &str) -> bool {
         return name[2..].chars().all(|c| c.is_ascii_lowercase()) && name.len() > 2;
     }
     digits_tail("mmcblk")
+}
+
+fn process_kind() -> ProcessRefreshKind {
+    ProcessRefreshKind::nothing()
+        .with_cpu()
+        .with_memory()
+        .with_user(UpdateKind::OnlyIfNotSet)
+        .with_cmd(UpdateKind::OnlyIfNotSet)
+        .without_tasks()
 }
 
 fn is_headline_sensor(label: &str) -> bool {
@@ -647,5 +696,63 @@ mod hog_tests {
         child.kill().ok();
         child.wait().ok();
         panic!("no alert for `yes`; cpu samples: {seen:?}");
+    }
+}
+
+/// Where the time of one refresh goes. `cargo test --release -- --ignored refresh_cost --nocapture`
+#[cfg(test)]
+mod cost_tests {
+    use super::*;
+
+    #[test]
+    #[ignore]
+    fn refresh_cost() {
+        let mut sys = System::new_all().unwrap();
+        let mut nets = Networks::new_with_refreshed_list().unwrap();
+        let mut comps = Components::new_with_refreshed_list().unwrap();
+        let mut disks = Disks::new_with_refreshed_list().unwrap();
+        let gpus = Gpus::detect();
+        let n = 20;
+        let time = |name: &str, f: &mut dyn FnMut()| {
+            let t = Instant::now();
+            for _ in 0..n {
+                f();
+            }
+            eprintln!(
+                "{name:<24} {:>7.2} ms",
+                t.elapsed().as_secs_f64() * 1000.0 / n as f64
+            );
+        };
+        time("refresh_cpu_usage", &mut || sys.refresh_cpu_usage());
+        time("refresh_cpu_frequency", &mut || sys.refresh_cpu_frequency());
+        time("refresh_memory", &mut || sys.refresh_memory());
+        time("processes (sysinfo default)", &mut || {
+            sys.refresh_processes(ProcessesToUpdate::All, true);
+        });
+        let mut lean = System::new().unwrap();
+        time("processes (undertop)", &mut || {
+            lean.refresh_processes_specifics(ProcessesToUpdate::All, true, process_kind());
+        });
+        for c in comps.iter_mut() {
+            let t = Instant::now();
+            c.refresh();
+            eprintln!(
+                "  sensor {:<40} {:>6.2} ms",
+                c.label(),
+                t.elapsed().as_secs_f64() * 1000.0
+            );
+        }
+        time("networks", &mut || nets.refresh(true));
+        time("components (sensors)", &mut || comps.refresh(false));
+        time("disks (every 5th)", &mut || disks.refresh(true));
+        time("diskstats", &mut || {
+            read_diskstats();
+        });
+        time("gpus", &mut || {
+            gpus.read();
+        });
+        time("battery", &mut || {
+            read_battery();
+        });
     }
 }

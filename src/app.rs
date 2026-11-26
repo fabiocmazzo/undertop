@@ -212,6 +212,7 @@ impl App {
         }
         if !self.paused && self.last_refresh.elapsed() >= self.interval {
             self.last_refresh = Instant::now();
+            self.mon.watch = self.dossier.as_ref().map(|(pid, _)| *pid);
             self.mon.refresh();
             self.rebuild();
             self.alerts.extend(self.mon.alerts.drain(..));
