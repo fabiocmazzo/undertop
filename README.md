@@ -2,7 +2,7 @@
 
 # UNDERTOP
 
-**SUBTERRANEAN OPERATIONS TERMINAL — OPERATOR MANUAL, REV 0.4**
+**SUBTERRANEAN OPERATIONS TERMINAL — OPERATOR MANUAL, REV 0.5**
 
 *A system monitor for people who live underground. Remain calm. Remain below.*
 

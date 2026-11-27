@@ -2,7 +2,7 @@
 
 Changes to the terminal, newest shift first.
 
-## Unreleased
+## v0.5.0 — Inspection Day
 
 - Release binaries for aarch64 (Raspberry Pi, ARM servers) besides x86_64; `install.sh` and
   `undertop-bin` pick the right one.
