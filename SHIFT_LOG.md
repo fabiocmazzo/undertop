@@ -2,7 +2,7 @@
 
 Changes to the terminal, newest shift first.
 
-## Unreleased
+## v0.4.0 — Lower Levels
 
 - `panels` in the config (and `--panels`) picks the stations; the others give up their room.
 - SILO palette, teal line-art on near-black, is now the default (`theme = "amber"` brings the old

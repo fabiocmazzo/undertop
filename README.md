@@ -7,8 +7,9 @@
 *A system monitor for people who live underground. Remain calm. Remain below.*
 
 [![MAINFRAME INTEGRITY](https://github.com/fabiocmazzo/undertop/actions/workflows/ci.yml/badge.svg)](https://github.com/fabiocmazzo/undertop/actions/workflows/ci.yml)
+[![Built With Ratatui](https://ratatui.rs/built-with-ratatui/badge.svg)](https://ratatui.rs/)
 
-![undertop: boot sequence, palettes, a ticker alert, a process dossier with its charts, the lineage tree, the termination dialog, the level 142 schematic, a lockdown and the shift report](assets/undertop.gif)
+![undertop in its SILO palette: boot sequence, a ticker alert, a process dossier with its charts, the lineage tree, the termination dialog, the level 142 schematic, a lockdown and the shift report](assets/undertop.gif)
 
 </div>
 

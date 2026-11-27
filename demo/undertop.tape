@@ -1,6 +1,6 @@
 # Records assets/undertop.gif. From the project root:
 #   cargo build --release && vhs demo/undertop.tape
-# then shrink it (vhs writes ~16 MB; this brings it to ~8 MB, under GitHub's 10 MB comfort zone):
+# then shrink it (vhs writes ~15 MB; this brings it to ~6 MB, under GitHub's 10 MB comfort zone):
 #   ffmpeg -i assets/undertop.gif -vf "fps=8,scale=1120:-1:flags=neighbor,split[a][b];[a]palettegen=max_colors=64:stats_mode=diff[p];[b][p]paletteuse=dither=none:diff_mode=rectangle" /tmp/u.gif && mv /tmp/u.gif assets/undertop.gif
 #
 # Careful when editing: in the termination dialog, Enter or Y sends SIGTERM to the
@@ -8,7 +8,7 @@
 #
 # Off camera it starts a busy `yes` (stopped by `timeout`), so the ticker raises an alert,
 # there is something harmless to open a dossier on, and a sector lit on the level 142 plan.
-# Status messages (palette changes) hold alerts back, so the alert is shown before anything else.
+# There is no palette tour: vhs drops the frames of whole-screen recolors.
 
 
 Output assets/undertop.gif
@@ -34,16 +34,6 @@ Enter
 
 # boot, then the console: `yes` holds a core and the ticker raises an alert
 Sleep 10s
-
-# palettes
-Type "t"
-Sleep 1.5s
-Type "t"
-Sleep 1.5s
-Type "t"
-Sleep 1.2s
-Type "t"
-Sleep 800ms
 
 # filter down to the `yes` and open its dossier (Enter keeps the filter, the
 # next Enter opens the dossier, Escape closes it, "/" + Escape clears the filter)
