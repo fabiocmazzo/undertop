@@ -1,6 +1,6 @@
 pkgbase = undertop-bin
 	pkgdesc = A system monitor dressed as the operations console of an underground silo (prebuilt binary)
-	pkgver = 0.3.1
+	pkgver = 0.4.0
 	pkgrel = 1
 	url = https://github.com/fabiocmazzo/undertop
 	arch = x86_64
@@ -12,7 +12,7 @@ pkgbase = undertop-bin
 	provides = undertop
 	conflicts = undertop
 	options = !debug
-	source_x86_64 = undertop-0.3.1-x86_64.tar.gz::https://github.com/fabiocmazzo/undertop/releases/download/v0.3.1/undertop-v0.3.1-x86_64-linux.tar.gz
-	sha256sums_x86_64 = b6616071101ac47d66a9147b09947adf246b9a12c190c73d122af72339b6a7f9
+	source_x86_64 = undertop-0.4.0-x86_64.tar.gz::https://github.com/fabiocmazzo/undertop/releases/download/v0.4.0/undertop-v0.4.0-x86_64-linux.tar.gz
+	sha256sums_x86_64 = 30d7647fe23e04a54ab9893f0f0e76d6c2496356bed3efd09e3ed14aa4d6fd00
 
 pkgname = undertop-bin
