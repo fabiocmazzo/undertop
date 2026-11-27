@@ -2,7 +2,7 @@
 
 pkgname=undertop-bin
 _pkgname=undertop
-pkgver=0.4.0
+pkgver=0.5.0
 pkgrel=1
 pkgdesc="A system monitor dressed as the operations console of an underground silo (prebuilt binary)"
 arch=('x86_64' 'aarch64')
@@ -17,9 +17,9 @@ conflicts=("$_pkgname")
 options=('!debug')
 source_x86_64=("$_pkgname-$pkgver-x86_64.tar.gz::$url/releases/download/v$pkgver/$_pkgname-v$pkgver-x86_64-linux.tar.gz")
 source_aarch64=("$_pkgname-$pkgver-aarch64.tar.gz::$url/releases/download/v$pkgver/$_pkgname-v$pkgver-aarch64-linux.tar.gz")
-sha256sums_x86_64=('30d7647fe23e04a54ab9893f0f0e76d6c2496356bed3efd09e3ed14aa4d6fd00')
+sha256sums_x86_64=('443ca715376a47ae7fa24b32a6935e0472be96bf1433e8e4eb84f2240e7d812e')
+sha256sums_aarch64=('fb2913e4ac6146d09bfae7f8338a21206b63632477a1ce02e707fa1ebdc68dd6')
 # filled in by update.sh at the first release with an aarch64 build (v0.5.0)
-sha256sums_aarch64=('SKIP')
 
 package() {
   cd "$_pkgname-v$pkgver-$CARCH-linux"
