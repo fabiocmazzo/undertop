@@ -231,10 +231,20 @@ Minimum terminal size is 80x24; it looks best at 160x45 or larger, in a truecolo
       only while the status is elevated or critical, so they mean something again.
     - **SILO palette:** teal on near-black, the colors of the schematic screens. It is the default
       from this version on (chosen by the user over AMBER). Its index is 4, after LOCKDOWN at 3.
+26. **Inspections and the secret palette.**
+    - **Inspections** come 10 to 50 minutes apart (random, about 30 on average) and only when the
+      console is clear: no overlay, no dossier, no filter being typed. An inspector who is due waits
+      instead of interrupting. The verdict is taken when the scan ends: zombies, an alert on the ticker
+      or a reactor above 90 % fail. `UNDERTOP_INSPECT=now` schedules one 4 seconds after start, for
+      trying it out.
+    - **The Konami code** (↑ ↑ ↓ ↓ ← → ← → b a) in the manifest unlocks SAFEGUARD, white and red,
+      always the last entry of `THEMES`. `t` skips it until it is unlocked; the unlock lasts the
+      shift, unless the config already names it.
+    - **aarch64 binaries** are built natively on GitHub's ARM runners rather than cross-compiled: no
+      linker setup, and the release tests run on both.
+    - **The README's revision** is the version's major.minor, checked by a test.
 
 ## Ideas for later
 
-- Per-interface network view.
-- Choose which panels to show in the config file.
 - Process environment in the dossier (left out for now: it often holds secrets, and screens get shared).
 - Sort and search inside the dossier's open-files list.

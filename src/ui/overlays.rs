@@ -9,7 +9,7 @@ use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap};
 
 use super::popup;
 use super::widgets::{area_chart, big_text, big_text_width, center};
-use crate::app::{App, LOCKDOWN_TIME, REPORT_TIME};
+use crate::app::{App, INSPECTION_SCAN, INSPECTION_TIME, LOCKDOWN_TIME, REPORT_TIME};
 use crate::sysmon::{fmt_bytes, fmt_duration};
 use crate::theme::lerp;
 
@@ -385,4 +385,116 @@ pub fn report(f: &mut Frame, area: Rect, app: &App) {
         lines.push(Line::from(spans));
     }
     f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
+}
+
+/// A surprise inspection: a scan line sweeps down the console, then a stamp gives the verdict.
+pub fn inspection(f: &mut Frame, area: Rect, app: &App) {
+    let t = app.theme();
+    let Some(i) = &app.inspection else {
+        return;
+    };
+    let elapsed = i.start.elapsed();
+    let Some((passed, why)) = &i.verdict else {
+        // the scan: rows already inspected are tinted, the line itself is bright
+        let p = (elapsed.as_secs_f64() / INSPECTION_SCAN.as_secs_f64()).min(1.0);
+        let line = area.y + ((area.height.saturating_sub(1)) as f64 * p) as u16;
+        let buf = f.buffer_mut();
+        for y in area.y..line {
+            for x in area.x..area.right() {
+                let c = &mut buf[(x, y)];
+                c.set_bg(lerp(t.bg, t.dim, 0.10));
+            }
+        }
+        for x in area.x..area.right() {
+            let c = &mut buf[(x, line)];
+            c.set_symbol("━")
+                .set_fg(t.bright)
+                .set_bg(lerp(t.bg, t.dim, 0.35));
+        }
+        let label = format!(
+            " ▼ INSPECTION IN PROGRESS ▸ LEVEL 142 ▸ {:>3}% ▼ ",
+            (p * 100.0) as u16
+        );
+        let w = label.chars().count() as u16;
+        let x = area.x + area.width.saturating_sub(w) / 2;
+        buf.set_string(
+            x,
+            line,
+            &label,
+            Style::new()
+                .fg(t.bg)
+                .bg(t.bright)
+                .add_modifier(Modifier::BOLD),
+        );
+        return;
+    };
+
+    // the stamp, slightly crooked like a real one: a heavy box, big letters, the reason
+    let word = if *passed { "PASSED" } else { "FAILED" };
+    let color = if *passed { t.bright } else { t.crit };
+    let scale = (1..=2)
+        .rev()
+        .find(|&s| big_text_width(word, s) + 10 <= area.width)
+        .unwrap_or(1);
+    let word_w = big_text_width(word, scale);
+    let w = (word_w + 10).max(50).min(area.width - 4);
+    let r = popup(area, w, 11);
+    f.render_widget(Clear, r);
+    let left = INSPECTION_TIME.saturating_sub(elapsed).as_secs() + 1;
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Thick)
+        .border_style(Style::new().fg(color))
+        .style(Style::new().bg(lerp(t.bg, color, 0.06)))
+        .title(
+            Line::styled(
+                " ╡ INSPECTED ▸ LEVEL 142 ╞ ",
+                Style::new().fg(color).add_modifier(Modifier::BOLD),
+            )
+            .centered(),
+        )
+        .title_bottom(
+            Line::styled(
+                format!(" ANY KEY TO DISMISS ▸ {left}s "),
+                Style::new().fg(t.dim),
+            )
+            .centered(),
+        );
+    let inner = block.inner(r);
+    f.render_widget(block, r);
+    let buf = f.buffer_mut();
+    let x = inner.x + inner.width.saturating_sub(word_w) / 2;
+    big_text(
+        buf,
+        x,
+        inner.y + 1,
+        word,
+        scale,
+        color,
+        lerp(color, t.bg, 0.4),
+        inner,
+    );
+    let lines = [
+        (
+            why.clone(),
+            Style::new().fg(if *passed { t.fg } else { t.warn }),
+        ),
+        (String::new(), Style::new()),
+        (
+            if *passed {
+                "THE FACILITY THANKS YOU FOR YOUR COOPERATION".to_string()
+            } else {
+                "A NOTE HAS BEEN ADDED TO YOUR FILE".to_string()
+            },
+            Style::new().fg(t.dim),
+        ),
+    ];
+    for (n, (text, style)) in lines.iter().enumerate() {
+        let y = inner.y + 5 + n as u16;
+        if y >= inner.bottom() {
+            break;
+        }
+        let w = inner.width as usize;
+        buf.set_string(inner.x, y, center(text, w), *style);
+    }
 }

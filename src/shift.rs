@@ -19,6 +19,8 @@ pub struct ShiftStats {
     pub lockdowns: u32,
     pub terminations: u32,
     pub dossiers: u32,
+    pub inspections_passed: u32,
+    pub inspections_failed: u32,
 }
 
 impl ShiftStats {
@@ -36,6 +38,8 @@ impl ShiftStats {
             lockdowns: 0,
             terminations: 0,
             dossiers: 0,
+            inspections_passed: 0,
+            inspections_failed: 0,
         }
     }
 
@@ -66,6 +70,8 @@ impl ShiftStats {
     pub fn verdict(&self) -> &'static str {
         if self.lockdowns > 0 {
             "INCIDENT LOGGED. EXPECT AN INTERVIEW."
+        } else if self.inspections_failed > 0 {
+            "INSPECTION FAILED. JUDICIAL HAS BEEN NOTIFIED."
         } else if self.terminations > 3 {
             "EXCESSIVE FORCE NOTED IN YOUR RECORD."
         } else if self.alerts > 0 || self.terminations > 0 {
@@ -130,6 +136,13 @@ impl ShiftStats {
                 ),
             ),
             ("DOSSIERS", format!("{} OPENED", self.dossiers)),
+            (
+                "INSPECTED",
+                format!(
+                    "{} PASSED ▸ {} FAILED",
+                    self.inspections_passed, self.inspections_failed
+                ),
+            ),
             ("VERDICT", self.verdict().into()),
         ]
     }

@@ -21,7 +21,7 @@ pub struct Theme {
     pub crit: Color,
 }
 
-pub const THEMES: [Theme; 5] = [
+pub const THEMES: [Theme; 6] = [
     Theme {
         name: "AMBER",
         bg: Color::Rgb(16, 10, 3),
@@ -73,7 +73,21 @@ pub const THEMES: [Theme; 5] = [
         warn: Color::Rgb(238, 206, 92),
         crit: Color::Rgb(255, 92, 72),
     },
+    // the secret one: white and red, unlocked by an old code (always last, see SECRET_THEME)
+    Theme {
+        name: "SAFEGUARD",
+        bg: Color::Rgb(12, 6, 8),
+        fg: Color::Rgb(236, 232, 226),
+        dim: Color::Rgb(196, 72, 64),
+        faint: Color::Rgb(72, 26, 26),
+        bright: Color::Rgb(255, 255, 255),
+        warn: Color::Rgb(255, 172, 64),
+        crit: Color::Rgb(255, 56, 44),
+    },
 ];
+
+/// Index of the secret palette, which `t` skips until it is unlocked.
+pub const SECRET_THEME: usize = THEMES.len() - 1;
 
 impl Theme {
     /// Color for a load level in `0.0..=1.0`: dim at rest, warning and critical when it climbs.

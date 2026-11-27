@@ -104,3 +104,19 @@ fn main() -> Result<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    /// The manual's cover names the revision it describes.
+    #[test]
+    fn readme_revision_follows_the_version() {
+        let mut v = env!("CARGO_PKG_VERSION").split('.');
+        let rev = format!(
+            "OPERATOR MANUAL, REV {}.{}",
+            v.next().unwrap(),
+            v.next().unwrap()
+        );
+        let readme = include_str!("../README.md");
+        assert!(readme.contains(&rev), "README.md should say \"{rev}\"");
+    }
+}

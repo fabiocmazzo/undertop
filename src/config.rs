@@ -44,6 +44,9 @@ shift_report = true
 # robotic voice for facility announcements (uses espeak-ng, espeak or spd-say if installed)
 voice = true
 
+# surprise inspections, about every 30 minutes on average
+inspections = true
+
 # seal the facility (LOCKDOWN palette, alarm) when a sensor reaches 95 °C
 # or 95 % of its critical temperature; at most once every 10 minutes
 lockdown_on_heat = true
@@ -61,6 +64,7 @@ struct File {
     shift_report: Option<bool>,
     lockdown_on_heat: Option<bool>,
     voice: Option<bool>,
+    inspections: Option<bool>,
 }
 
 #[derive(Debug, Clone)]
@@ -74,6 +78,7 @@ pub struct Settings {
     pub shift_report: bool,
     pub lockdown_on_heat: bool,
     pub voice: bool,
+    pub inspections: bool,
 }
 
 impl Default for Settings {
@@ -88,6 +93,7 @@ impl Default for Settings {
             shift_report: true,
             lockdown_on_heat: true,
             voice: true,
+            inspections: true,
         }
     }
 }
@@ -197,6 +203,7 @@ impl Settings {
         s.shift_report = f.shift_report.unwrap_or(s.shift_report);
         s.lockdown_on_heat = f.lockdown_on_heat.unwrap_or(s.lockdown_on_heat);
         s.voice = f.voice.unwrap_or(s.voice);
+        s.inspections = f.inspections.unwrap_or(s.inspections);
         Ok(s)
     }
 }

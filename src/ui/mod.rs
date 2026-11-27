@@ -42,6 +42,9 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     if app.schematic.is_some() && area.width >= MIN_W && area.height >= MIN_H && !app.booting {
         schematic::draw(f, area, app);
     }
+    if app.inspection.is_some() && area.width >= MIN_W && area.height >= MIN_H && !app.booting {
+        overlays::inspection(f, area, app);
+    }
     if app.report.is_some() && area.width >= MIN_W && area.height >= MIN_H {
         overlays::report(f, area, app);
     }
@@ -1390,7 +1393,7 @@ mod tests {
     use crate::app::{App, KillPrompt};
     use crate::config::Settings;
 
-    const SCREENS: [&str; 13] = [
+    const SCREENS: [&str; 16] = [
         "console",
         "boot",
         "help",
@@ -1404,6 +1407,9 @@ mod tests {
         "elevation",
         "plan",
         "safeguard",
+        "inspection",
+        "passed",
+        "failed",
     ];
 
     fn test_app() -> App {
@@ -1437,6 +1443,14 @@ mod tests {
             page: n - 9,
             page_start: Instant::now() - Duration::from_millis(2900),
         });
+        app.inspection = (13..16).contains(&n).then(|| crate::app::Inspection {
+            start: Instant::now() - Duration::from_millis(if n == 13 { 1800 } else { 4000 }),
+            verdict: match n {
+                14 => Some((true, "NO ZOMBIES ▸ NO ALERTS ▸ REACTOR STABLE".into())),
+                15 => Some((false, "2 ZOMBIE PROCESSES ON THE MANIFEST".into())),
+                _ => None,
+            },
+        });
     }
 
     fn dump(term: &Terminal<TestBackend>, w: u16, h: u16) -> String {
@@ -1454,7 +1468,7 @@ mod tests {
     /// Renders every screen at a few sizes; fails on panics (out-of-range drawing, etc.).
     /// `UNDERTOP_DUMP=<screen> cargo test -- --nocapture` prints a screen, by name or number
     /// (console, boot, help, kill, dossier, lockdown, tree, power-down, report, access, elevation,
-    /// plan, safeguard).
+    /// plan, safeguard, inspection, passed, failed).
     #[test]
     fn renders_at_many_sizes() {
         let mut app = test_app();

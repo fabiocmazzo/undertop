@@ -3,7 +3,7 @@
 | Package | What it installs |
 | --- | --- |
 | `undertop` | builds the tagged source with cargo (x86_64, aarch64) |
-| `undertop-bin` | the prebuilt x86_64 binary from the GitHub release |
+| `undertop-bin` | the prebuilt binary from the GitHub release (x86_64, aarch64) |
 
 Both were built with `makepkg` and checked with `namcap`. The only warning left is the usual "unused shared
 library ld-linux" that every Rust binary gets.

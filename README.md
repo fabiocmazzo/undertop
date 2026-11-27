@@ -2,7 +2,7 @@
 
 # UNDERTOP
 
-**SUBTERRANEAN OPERATIONS TERMINAL — OPERATOR MANUAL, REV 0.1**
+**SUBTERRANEAN OPERATIONS TERMINAL — OPERATOR MANUAL, REV 0.4**
 
 *A system monitor for people who live underground. Remain calm. Remain below.*
 
@@ -40,7 +40,7 @@ Written in Rust with [ratatui](https://ratatui.rs/) and [sysinfo](https://crates
 
 ## § 3. COMMISSIONING THE TERMINAL
 
-One line, no root (x86_64; it checks the download's SHA-256 and installs to `~/.local/bin`):
+One line, no root (x86_64 or aarch64; it checks the download's SHA-256 and installs to `~/.local/bin`):
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/fabiocmazzo/undertop/main/install.sh | sh
@@ -97,6 +97,7 @@ boot = true              # power-on self test
 power_down = true        # CRT switch-off when leaving
 shift_report = true      # end-of-shift report when leaving (§ 5.3)
 voice = true             # robotic voice for announcements (needs espeak-ng, espeak or spd-say)
+inspections = true       # surprise inspections, about every 30 minutes on average
 lockdown_on_heat = true  # see § 7
 ```
 
@@ -196,6 +197,14 @@ There are rumours of a manual override. Management neither confirms nor denies t
 The facility schematics are restricted. Operators are reminded that their terminal sits on level 142,
 and that curiosity is noted. If a speech synthesizer such as `espeak-ng` is installed, the facility
 will tell you so out loud (`voice = false` to keep it quiet).
+
+Inspectors from the upper levels may sweep the console without notice, about every half hour. They wait
+until you close what you are reading, and any key sends them on their way. Zombie processes, an
+unanswered alert or a reactor above 90 % fail the level, and that goes in your file and in the shift
+report. (`inspections = false`, for operators with nothing to hide.)
+
+Some operators still remember the old codes from before. Those who type one into the manifest find
+that the palettes go further than `t` lets on, until the end of the shift.
 
 ## § 8. FOR MAINTENANCE PERSONNEL
 

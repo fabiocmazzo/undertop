@@ -1,6 +1,6 @@
 name: Release
 
-# Push a tag like v0.1.0 to build the Linux binary and publish a GitHub release.
+# Push a tag like v0.1.0 to build the Linux binaries (x86_64 and aarch64) and publish a GitHub release.
 # Run by hand with a tag to only bring packaging/aur up to that release (e.g. if that job failed).
 on:
   push:
@@ -18,9 +18,17 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  release:
+  # One native build per architecture: GitHub's ARM runners are free for public repositories.
+  build:
     if: github.event_name == 'push'
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-latest
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
@@ -31,11 +39,25 @@ jobs:
         run: cargo build --release --locked
       - name: Package
         run: |
-          name="undertop-${GITHUB_REF_NAME}-x86_64-linux"
+          name="undertop-${GITHUB_REF_NAME}-${{ matrix.arch }}-linux"
+          [ "$(uname -m)" = "${{ matrix.arch }}" ] || { echo "built on $(uname -m)"; exit 1; }
           mkdir "$name"
           cp target/release/undertop README.md LICENSE "$name/"
           tar czf "$name.tar.gz" "$name"
           sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.arch }}
+          path: undertop-*.tar.gz*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}

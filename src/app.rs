@@ -17,7 +17,7 @@ use ratatui::widgets::TableState;
 use crate::config::Settings;
 use crate::shift::ShiftStats;
 use crate::sysmon::{Dossier, History, Monitor, ProcRow};
-use crate::theme::{THEMES, Theme};
+use crate::theme::{SECRET_THEME, THEMES, Theme};
 use crate::ui;
 
 /// Animation frame period (~12 fps): enough for blinking, waves and the ticker.
@@ -47,6 +47,32 @@ pub const SCHEMATIC_PAGES: [Duration; 4] = [
 pub const SAFEGUARD_PAGE: usize = 3;
 /// Typed in the manifest, opens the facility schematic.
 const SCHEMATIC_CODE: &str = "142";
+
+/// A surprise inspection: a scan line sweeps the screen, then a stamp says how it went.
+pub const INSPECTION_SCAN: Duration = Duration::from_millis(3600);
+pub const INSPECTION_TIME: Duration = Duration::from_secs(8);
+/// Inspections come at least this long apart, plus a random part of `INSPECTION_SPREAD`.
+const INSPECTION_MIN: Duration = Duration::from_secs(10 * 60);
+const INSPECTION_SPREAD: Duration = Duration::from_secs(40 * 60);
+/// An old code, typed in the manifest, unlocks the secret palette.
+const KONAMI: [KeyCode; 10] = [
+    KeyCode::Up,
+    KeyCode::Up,
+    KeyCode::Down,
+    KeyCode::Down,
+    KeyCode::Left,
+    KeyCode::Right,
+    KeyCode::Left,
+    KeyCode::Right,
+    KeyCode::Char('b'),
+    KeyCode::Char('a'),
+];
+
+pub struct Inspection {
+    pub start: Instant,
+    /// Set when the scan reaches the bottom: (passed, why).
+    pub verdict: Option<(bool, String)>,
+}
 
 /// The facility schematic easter egg: a short sequence of screens.
 pub struct Schematic {
@@ -146,6 +172,11 @@ pub struct App {
     pub dossier_cpu: History,
     pub dossier_mem: History,
     pub schematic: Option<Schematic>,
+    pub inspection: Option<Inspection>,
+    next_inspection: Instant,
+    /// The last keys pressed in the manifest, for `KONAMI`.
+    keys: Vec<KeyCode>,
+    secret_unlocked: bool,
     /// The last digits typed in the manifest, for `SCHEMATIC_CODE`.
     typed: String,
     /// When the end-of-shift report appeared (after `q`).
@@ -193,6 +224,16 @@ impl App {
             dossier_cpu: History::new(),
             dossier_mem: History::new(),
             schematic: None,
+            inspection: None,
+            // UNDERTOP_INSPECT=now schedules one right after start (for trying it out)
+            next_inspection: Instant::now()
+                + if std::env::var("UNDERTOP_INSPECT").as_deref() == Ok("now") {
+                    Duration::from_secs(4)
+                } else {
+                    INSPECTION_MIN
+                },
+            keys: Vec::new(),
+            secret_unlocked: settings.theme_idx == SECRET_THEME,
             typed: String::new(),
             shift: ShiftStats::new(),
             hits: Hits::default(),
@@ -279,6 +320,7 @@ impl App {
         if self.booting && self.boot_start.elapsed() >= BOOT_TIME {
             self.booting = false;
         }
+        self.tick_inspection();
         if !self.paused && self.last_refresh.elapsed() >= self.interval {
             self.last_refresh = Instant::now();
             self.mon.watch = self.dossier.as_ref().map(|(pid, _)| *pid);
@@ -360,6 +402,7 @@ impl App {
         };
         self.theme_idx = LOCKDOWN_THEME;
         self.schematic = None;
+        self.inspection = None;
         self.lockdown = Some(Lockdown {
             start: Instant::now(),
             reason,
@@ -455,6 +498,21 @@ impl App {
         }
     }
 
+    fn unlock_secret(&mut self) {
+        let first = !self.secret_unlocked;
+        self.secret_unlocked = true;
+        self.theme_idx = SECRET_THEME;
+        self.bell = true;
+        self.flash(if first {
+            "OVERRIDE ACCEPTED ▸ SECRET PALETTE SAFEGUARD UNLOCKED FOR THIS SHIFT"
+        } else {
+            "PALETTE ▸ SAFEGUARD"
+        });
+        if first && self.settings.voice {
+            crate::voice::say("Override accepted.");
+        }
+    }
+
     fn power_down(&mut self) {
         if self.settings.power_down {
             self.shutdown = Some(Instant::now());
@@ -478,6 +536,90 @@ impl App {
             self.dossier_cpu.push(d.row.cpu as f64);
             self.dossier_mem.push(d.row.mem as f64);
         }
+    }
+
+    /// Nothing else on screen that an inspection would cover or interrupt.
+    fn console_is_clear(&self) -> bool {
+        !self.booting
+            && self.shutdown.is_none()
+            && self.report.is_none()
+            && self.schematic.is_none()
+            && self.lockdown.is_none()
+            && self.kill.is_none()
+            && self.dossier.is_none()
+            && !self.show_help
+            && !self.filter_mode
+    }
+
+    fn tick_inspection(&mut self) {
+        if let Some(i) = &self.inspection {
+            let elapsed = i.start.elapsed();
+            if i.verdict.is_none() && elapsed >= INSPECTION_SCAN {
+                let verdict = self.inspect();
+                if verdict.0 {
+                    self.shift.inspections_passed += 1;
+                } else {
+                    self.shift.inspections_failed += 1;
+                    self.bell = true;
+                }
+                if self.settings.voice {
+                    crate::voice::say(if verdict.0 {
+                        "Level one four two. Inspection passed."
+                    } else {
+                        "Level one four two. Inspection failed."
+                    });
+                }
+                if let Some(i) = &mut self.inspection {
+                    i.verdict = Some(verdict);
+                }
+            } else if elapsed >= INSPECTION_TIME {
+                self.inspection = None;
+            }
+            return;
+        }
+        if Instant::now() < self.next_inspection {
+            return;
+        }
+        if !self.settings.inspections && std::env::var("UNDERTOP_INSPECT").as_deref() != Ok("now") {
+            self.schedule_inspection();
+            return;
+        }
+        // an inspector never interrupts; they wait until the operator is done
+        if self.console_is_clear() {
+            self.start_inspection();
+        }
+    }
+
+    pub(crate) fn start_inspection(&mut self) {
+        self.inspection = Some(Inspection {
+            start: Instant::now(),
+            verdict: None,
+        });
+        self.schedule_inspection();
+    }
+
+    fn schedule_inspection(&mut self) {
+        self.next_inspection =
+            Instant::now() + INSPECTION_MIN + INSPECTION_SPREAD.mul_f64(self.rand());
+    }
+
+    /// What the inspector finds: zombies, a recent alert or a critical load fail the level.
+    fn inspect(&self) -> (bool, String) {
+        let zombies = self.mon.procs.iter().filter(|p| p.status == "ZMB").count();
+        if zombies > 0 {
+            let es = if zombies == 1 { "" } else { "ES" };
+            return (
+                false,
+                format!("{zombies} ZOMBIE PROCESS{es} ON THE MANIFEST"),
+            );
+        }
+        if self.alert.is_some() || !self.alerts.is_empty() {
+            return (false, "AN UNRESOLVED ALERT ON THE TICKER".into());
+        }
+        if self.mon.cpu_total.last() > 90.0 {
+            return (false, "REACTOR RUNNING ABOVE 90%".into());
+        }
+        (true, "NO ZOMBIES ▸ NO ALERTS ▸ REACTOR STABLE".into())
     }
 
     pub(crate) fn open_schematic(&mut self) {
@@ -524,6 +666,7 @@ impl App {
         if self.booting
             || self.report.is_some()
             || self.schematic.is_some()
+            || self.inspection.is_some()
             || self.lockdown.is_some()
             || self.show_help
         {
@@ -605,6 +748,11 @@ impl App {
             self.power_down();
             return;
         }
+        if self.inspection.is_some() {
+            // the inspector steps aside
+            self.inspection = None;
+            return;
+        }
         if self.schematic.is_some() {
             if matches!(key.code, KeyCode::Esc | KeyCode::Char('q')) {
                 self.schematic = None;
@@ -660,6 +808,15 @@ impl App {
             return;
         }
         let page = 10;
+        self.keys.push(key.code);
+        if self.keys.len() > KONAMI.len() {
+            self.keys.remove(0);
+        }
+        if self.keys == KONAMI {
+            self.keys.clear();
+            self.unlock_secret();
+            return;
+        }
         if let KeyCode::Char(c @ '0'..='9') = key.code {
             self.typed.push(c);
             if self.typed.len() > SCHEMATIC_CODE.len() {
@@ -689,7 +846,13 @@ impl App {
                 });
             }
             KeyCode::Char('t') => {
-                self.theme_idx = (self.theme_idx + 1) % THEMES.len();
+                // the secret palette joins the cycle only once unlocked
+                let count = if self.secret_unlocked {
+                    THEMES.len()
+                } else {
+                    SECRET_THEME
+                };
+                self.theme_idx = (self.theme_idx + 1) % count;
                 self.flash(format!("PALETTE ▸ {}", self.theme().name));
             }
             KeyCode::Char('x') => {
@@ -986,6 +1149,54 @@ mod tests {
                 app.on_key(KeyEvent::from(KeyCode::Char(c)));
             }
             assert!(app.schematic.is_none());
+        }
+
+        #[test]
+        fn the_old_code_unlocks_the_secret_palette() {
+            let (mut app, _term) = drawn_app();
+            app.settings.voice = false;
+            let cycle = |app: &mut App| {
+                let mut seen = Vec::new();
+                for _ in 0..THEMES.len() {
+                    app.on_key(KeyEvent::from(KeyCode::Char('t')));
+                    seen.push(app.theme_idx);
+                }
+                seen
+            };
+            assert!(!cycle(&mut app).contains(&SECRET_THEME));
+            for k in KONAMI {
+                app.on_key(KeyEvent::from(k));
+            }
+            assert_eq!(app.theme_idx, SECRET_THEME);
+            assert!(cycle(&mut app).contains(&SECRET_THEME));
+        }
+
+        #[test]
+        fn an_inspection_scans_stamps_and_steps_aside() {
+            let (mut app, _term) = drawn_app();
+            app.settings.voice = false;
+            app.alert = None;
+            app.alerts.clear();
+            app.start_inspection();
+            assert!(app.next_inspection >= Instant::now() + INSPECTION_MIN);
+            app.inspection.as_mut().unwrap().start -= INSPECTION_SCAN;
+            app.tick_inspection();
+            let verdict = app.inspection.as_ref().and_then(|i| i.verdict.clone());
+            assert!(verdict.is_some());
+            assert_eq!(
+                app.shift.inspections_passed + app.shift.inspections_failed,
+                1
+            );
+            // any key dismisses it, and does nothing else
+            let theme = app.theme_idx;
+            app.on_key(KeyEvent::from(KeyCode::Char('t')));
+            assert!(app.inspection.is_none());
+            assert_eq!(app.theme_idx, theme);
+            // the inspector waits while a dossier is open
+            app.next_inspection = Instant::now();
+            app.dossier = Some((1, app.mon.dossier(1)));
+            app.tick_inspection();
+            assert!(app.inspection.is_none());
         }
 
         #[test]

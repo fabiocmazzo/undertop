@@ -4,6 +4,7 @@ pkgbase = undertop-bin
 	pkgrel = 1
 	url = https://github.com/fabiocmazzo/undertop
 	arch = x86_64
+	arch = aarch64
 	license = MIT
 	depends = glibc
 	depends = libgcc
@@ -14,5 +15,7 @@ pkgbase = undertop-bin
 	options = !debug
 	source_x86_64 = undertop-0.4.0-x86_64.tar.gz::https://github.com/fabiocmazzo/undertop/releases/download/v0.4.0/undertop-v0.4.0-x86_64-linux.tar.gz
 	sha256sums_x86_64 = 30d7647fe23e04a54ab9893f0f0e76d6c2496356bed3efd09e3ed14aa4d6fd00
+	source_aarch64 = undertop-0.4.0-aarch64.tar.gz::https://github.com/fabiocmazzo/undertop/releases/download/v0.4.0/undertop-v0.4.0-aarch64-linux.tar.gz
+	sha256sums_aarch64 = SKIP
 
 pkgname = undertop-bin

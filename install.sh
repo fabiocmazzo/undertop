@@ -27,6 +27,7 @@ main() {
     [ "$(uname -s)" = Linux ] || die "undertop only runs on Linux (this is $(uname -s))"
     case "$(uname -m)" in
     x86_64 | amd64) arch=x86_64 ;;
+    aarch64 | arm64) arch=aarch64 ;;
     *) die "no prebuilt binary for $(uname -m); build it with: cargo install --git https://github.com/$REPO" ;;
     esac
 

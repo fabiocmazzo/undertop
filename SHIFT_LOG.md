@@ -2,6 +2,17 @@
 
 Changes to the terminal, newest shift first.
 
+## Unreleased
+
+- Release binaries for aarch64 (Raspberry Pi, ARM servers) besides x86_64; `install.sh` and
+  `undertop-bin` pick the right one.
+- Surprise inspections, about every 30 minutes: a scan line sweeps the console, then a stamp says
+  PASSED or FAILED (zombies, an unanswered alert or the reactor above 90 %). They never interrupt an
+  open overlay, any key dismisses them, the shift report counts them, and `inspections = false` turns
+  them off.
+- An old code, typed in the manifest, unlocks a secret palette for the rest of the shift.
+- The manual's revision follows the version.
+
 ## v0.4.0 — Lower Levels
 
 - `panels` in the config (and `--panels`) picks the stations; the others give up their room.
